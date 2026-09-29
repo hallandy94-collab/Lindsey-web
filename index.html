@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Goldie Street Build Sequence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a site-office viewer. 3D model fills the stage; the right-hand sheet
+   is the stage card + sequence register; the transport bar sits on the model. */
+:root {
+  --bg: #e9ecea;          /* drafting film */
+  --panel: #f7f8f6;
+  --ink: #16202a;
+  --muted: #5a6672;
+  --line: #d0d6d3;
+  --accent: #1f5fbf;      /* marking-paint blue */
+  --accent-ink: #ffffff;
+  --hold: #9a6a00;        /* hold-point amber (text) */
+  --hold-bg: #fbf1d4;
+  --done: #3f7d4f;
+  --sky: #d9e2e7;
+  --ghost: #33414f;
+  --glass: rgba(247, 248, 246, 0.86);
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --pkg-CLL: #8a5a2b; --pkg-CON: #5b6770; --pkg-LB: #1f5fbf; --pkg-SVC: #7a3f98; --pkg-ALL: #16202a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --panel: #141c24; --ink: #e5eaee; --muted: #93a0ac; --line: #26323d;
+    --accent: #6ea0ff; --accent-ink: #0b1220; --hold: #f2c04a; --hold-bg: #2b2412; --done: #6cc486;
+    --sky: #1b252f; --ghost: #9fb3c6; --glass: rgba(20, 28, 36, 0.86);
+    --pkg-CLL: #d39a5e; --pkg-CON: #a8b4bd; --pkg-LB: #6ea0ff; --pkg-SVC: #c08ae0; --pkg-ALL: #e5eaee;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --panel: #141c24; --ink: #e5eaee; --muted: #93a0ac; --line: #26323d;
+  --accent: #6ea0ff; --accent-ink: #0b1220; --hold: #f2c04a; --hold-bg: #2b2412; --done: #6cc486;
+  --sky: #1b252f; --ghost: #9fb3c6; --glass: rgba(20, 28, 36, 0.86);
+  --pkg-CLL: #d39a5e; --pkg-CON: #a8b4bd; --pkg-LB: #6ea0ff; --pkg-SVC: #c08ae0; --pkg-ALL: #e5eaee;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 var(--f-body);
+  display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+}
+[hidden] { display: none !important; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.bar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.brand h1 { margin: 0; font: 700 26px/1 var(--f-display); letter-spacing: 0.01em; text-transform: uppercase; }
+.brand span { color: var(--muted); font-size: 13px; }
+.clock { margin-left: auto; display: flex; align-items: baseline; gap: 12px; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.clock #week { font: 600 13px var(--f-mono); color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase; }
+.clock #date { font: 600 22px/1 var(--f-display); letter-spacing: 0.02em; }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
+#viewport { position: relative; min-height: 0; background: var(--sky); overflow: hidden; }
+#viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.overlay { position: absolute; z-index: 2; }
+.views { top: 12px; left: 12px; display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 24px); }
+.chip {
+  border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(6px);
+  padding: 5px 10px; border-radius: 4px; cursor: pointer; font: 600 13px var(--f-display);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+
+details.display { top: 12px; right: 12px; background: var(--glass); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 6px; width: 240px; max-width: calc(100% - 24px); }
+details.display summary { cursor: pointer; padding: 6px 12px; font: 600 13px var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; list-style: none; }
+details.display summary::after { content: " ▾"; color: var(--muted); }
+details.display[open] summary { border-bottom: 1px solid var(--line); }
+.dgrid { display: grid; gap: 6px; padding: 10px 12px 12px; }
+.dgrid label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.dgrid .sub { font: 600 11px var(--f-mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+.dgrid input[type=range] { width: 100%; accent-color: var(--accent); }
+.dgrid select { width: 100%; padding: 4px 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.rowv { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+
+.transport {
+  left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 10px;
+  background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+}
+.tbtn { width: 36px; height: 36px; flex: none; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); cursor: pointer; display: grid; place-items: center; }
+.tbtn svg { width: 16px; height: 16px; fill: currentColor; }
+#play { width: 44px; height: 44px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#play .i-pause { display: none; }
+#play[data-on="true"] .i-play { display: none; }
+#play[data-on="true"] .i-pause { display: block; }
+.track { position: relative; flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; }
+#ticks { position: absolute; left: 8px; right: 8px; top: 50%; height: 0; pointer-events: none; }
+.tick { position: absolute; top: -5px; width: 1px; height: 10px; background: var(--muted); opacity: 0.5; }
+.tick.ms { width: 9px; height: 9px; top: -14px; margin-left: -4px; background: var(--hold); opacity: 1; transform: rotate(45deg); }
+#scrub { position: relative; width: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; height: 36px; cursor: pointer; }
+#scrub::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--p, 0%), var(--line) var(--p, 0%)); }
+#scrub::-moz-range-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--p, 0%), var(--line) var(--p, 0%)); }
+#scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border-radius: 50%; background: var(--panel); border: 3px solid var(--accent); }
+#scrub::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 3px solid var(--accent); }
+#speed { flex: none; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 4px 6px; font-family: var(--f-mono); font-size: 12px; }
+
+aside.sheet { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.card { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); overflow-y: auto; flex: 1 1 60%; min-height: 0; }
+.eyebrow { font: 500 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.card h2 { margin: 4px 0 10px; font: 700 28px/1.05 var(--f-display); text-wrap: balance; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tag { font: 500 12px var(--f-mono); padding: 2px 8px; border-radius: 3px; border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+#st-pkg { color: var(--panel); border-color: transparent; background: var(--pkg-ALL); }
+#st-pkg[data-pkg="CLL"] { background: var(--pkg-CLL); } #st-pkg[data-pkg="CON"] { background: var(--pkg-CON); }
+#st-pkg[data-pkg="LB"] { background: var(--pkg-LB); } #st-pkg[data-pkg="SVC"] { background: var(--pkg-SVC); }
+.ms-banner { display: block; margin: 0 0 12px; padding: 6px 10px; border-left: 4px solid var(--hold); background: var(--hold-bg); font: 600 15px var(--f-display); letter-spacing: 0.04em; text-transform: uppercase; }
+.card p { margin: 0 0 14px; max-width: 65ch; }
+.card h3 { margin: 14px 0 6px; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.card ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+#st-qty li { padding-left: 14px; position: relative; font-variant-numeric: tabular-nums; }
+#st-qty li::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 6px; height: 2px; background: var(--muted); }
+#st-holds li { padding: 4px 8px 4px 26px; position: relative; background: var(--hold-bg); border-radius: 3px; }
+#st-holds li::before { content: "H"; position: absolute; left: 6px; top: 4px; font: 700 12px var(--f-mono); color: var(--hold); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 14px; font-size: 13px; }
+.facts dt { color: var(--muted); font: 500 12px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; padding-top: 1px; }
+.facts dd { margin: 0; }
+.note { margin-top: 10px; font-size: 13px; color: var(--muted); font-style: italic; }
+#st-def-list li { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+#st-def-list b { font-weight: 600; }
+.legend { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
+.legend span { display: flex; align-items: center; gap: 8px; }
+.legend i { width: 22px; height: 10px; border-radius: 2px; flex: none; outline: 1px solid var(--line); }
+.explode-btn { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 4px; cursor: pointer; color: var(--accent); font-weight: 600; }
+#flow { display: flex; gap: 4px; margin: 4px 0 12px; }
+#flow i { flex: 1; font: 600 12px var(--f-mono); font-style: normal; text-align: center; padding: 4px 0; border-radius: 3px; border: 1px solid var(--line); color: var(--muted); }
+#flow i[data-s="done"] { background: var(--done); border-color: var(--done); color: var(--panel); }
+#flow i[data-s="now"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.register { flex: 1 1 40%; min-height: 0; display: flex; flex-direction: column; }
+.register h3 { margin: 0; padding: 10px 20px 6px; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#seq { list-style: none; margin: 0; padding: 0 8px 12px; overflow-y: auto; min-height: 0; }
+#seq button { width: 100%; display: grid; grid-template-columns: 12px 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; padding: 5px 12px; border: 0; background: none; border-radius: 4px; cursor: pointer; }
+#seq button:hover { background: var(--bg); }
+#seq .dot { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--muted); }
+#seq .n { font: 500 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+#seq .tt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#seq .dt { font: 400 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+#seq button[data-state="done"] .dot { background: var(--done); border-color: var(--done); }
+#seq button[data-state="done"] .tt { color: var(--muted); }
+#seq button[data-state="now"] { background: var(--bg); }
+#seq button[data-state="now"] .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+#seq button[data-state="now"] .tt { font-weight: 600; }
+.foot { padding: 8px 20px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+
+@media (max-width: 860px) {
+  body { overflow: auto; display: block; }
+  main { display: block; }
+  #viewport { height: 62vh; min-height: 380px; }
+  aside.sheet { border-left: 0; border-top: 1px solid var(--line); }
+  .card, #seq { overflow: visible; }
+  .clock { margin-left: 0; width: 100%; }
+  details.display { top: auto; bottom: 76px; right: 12px; }
+  .views { right: 12px; }
+  .chip { padding: 4px 8px; font-size: 12px; }
+  .transport { gap: 6px; padding: 6px 8px; }
+  .tbtn { width: 32px; height: 32px; }
+  #play { width: 40px; height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <h1>Goldie Street</h1>
+    <span>Build sequence · 10–14 Goldie St, St Heliers · 5 terrace houses over basement</span>
+  </div>
+  <div class="clock" aria-live="polite">
+    <span id="week">Week 1</span>
+    <span id="date">29 Jun 2026</span>
+  </div>
+</header>
+<main>
+  <section id="viewport" aria-label="3D model of the build">
+    <div class="overlay views" role="group" aria-label="Camera views">
+      <button class="chip" type="button" data-view="iso" aria-pressed="false">3D</button>
+      <button class="chip" type="button" data-view="street" aria-pressed="false">Street</button>
+      <button class="chip" type="button" data-view="basement" aria-pressed="false">Basement</button>
+      <button class="chip" type="button" data-view="plan" aria-pressed="false">Plan</button>
+      <button class="chip" type="button" data-view="rear" aria-pressed="false">Garden</button>
+    </div>
+    <details class="overlay display">
+      <summary>Display</summary>
+      <div class="dgrid">
+        <label><input id="tg-ghost" type="checkbox"> Outline of work still to come</label>
+        <label><input id="tg-hl" type="checkbox"> Highlight this stage's work</label>
+        <label><input id="tg-temp" type="checkbox"> Temporary works &amp; plant</label>
+        <label><input id="tg-xray" type="checkbox"> See-through ground (piles, drains)</label>
+        <label><input id="tg-ctx" type="checkbox"> Street &amp; neighbours</label>
+        <label><input id="tg-cam" type="checkbox"> Move camera with each stage</label>
+        <span class="sub">Section cut from street</span>
+        <input id="cutz" type="range" min="0" max="24" step="0.5" value="0" aria-label="Section cut distance from street">
+        <div class="rowv"><span>Off</span><span id="cutz-v">Off</span></div>
+        <span class="sub">Show up to level</span>
+        <select id="cutlv" aria-label="Show up to level">
+          <option value="all">Whole building</option>
+          <option value="l2">Up to L2 (no roof)</option>
+          <option value="l1">Up to L1</option>
+          <option value="lg">Up to LG</option>
+          <option value="l0">Basement L0 only</option>
+        </select>
+      </div>
+    </details>
+    <div class="overlay transport">
+      <button id="prev" class="tbtn" type="button" aria-label="Previous stage"><svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg></button>
+      <button id="play" class="tbtn" type="button" aria-label="Play"><svg class="i-play" viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg><svg class="i-pause" viewBox="0 0 16 16"><path d="M3 2h4v12H3zM9 2h4v12H9z"/></svg></button>
+      <button id="next" class="tbtn" type="button" aria-label="Next stage"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+      <div class="track">
+        <div id="ticks"></div>
+        <input id="scrub" type="range" min="0" value="0" aria-label="Build timeline">
+      </div>
+      <select id="speed" aria-label="Playback speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </div>
+  </section>
+
+  <aside class="sheet">
+    <div class="card">
+      <div class="eyebrow" id="st-n">Stage 01</div>
+      <h2 id="st-title">–</h2>
+      <div class="meta">
+        <span class="tag" id="st-pkg"></span>
+        <span class="tag" id="st-wk"></span>
+        <span class="tag" id="st-dates"></span>
+      </div>
+      <span class="ms-banner" id="st-ms" hidden></span>
+      <div id="flow" hidden><i>H1</i><i>H2</i><i>H3</i><i>H4</i><i>H5</i></div>
+      <p id="st-what"></p>
+      <div id="explode-wrap" hidden>
+        <div class="legend">
+          <span><i style="background:#cdbd8e"></i>Sand blinding 50</span>
+          <span><i style="background:#26272b"></i>Nuraply 3PTM tanking membrane</span>
+          <span><i style="background:#6ea6d8"></i>XPS insulation 40 mm</span>
+          <span><i style="background:#8d857a"></i>GAP65 hardfill 150 + blinding</span>
+          <span><i style="background:#3b3c44"></i>Nuraply 3PG to walls</span>
+          <span><i style="background:#3f7a4f"></i>Nuradrain protection / drainage board</span>
+        </div>
+        <label class="explode-btn"><input id="explode" type="checkbox"> Separate the tanking layers</label>
+      </div>
+      <div id="st-def" hidden>
+        <h3>Five lines of defence against water</h3>
+        <ul id="st-def-list"></ul>
+      </div>
+      <h3>Quantities</h3>
+      <ul id="st-qty"></ul>
+      <h3>Hold points</h3>
+      <ul id="st-holds"></ul>
+      <dl class="facts">
+        <dt>Plant</dt><dd id="st-plant"></dd>
+        <dt>Crew</dt><dd id="st-crew"></dd>
+      </dl>
+      <div class="note" id="st-note" hidden></div>
+    </div>
+    <div class="register">
+      <h3>Sequence · 28 stages · 29 Jun 2026 → PC Nov 2027</h3>
+      <ol id="seq"></ol>
+      <div class="foot">Massing is built from the pack's quantities and levels (30.18 m frontage, 769 m² L0, RLs from the methodology). It is indicative, not the HAL architectural model. Sources: RWC Construction Methodology Rev C, Concrete Phase Methodology Rev 6, Detailed Programme Rev C, Site Logistics Rev C. Not for construction.</div>
+    </div>
+  </aside>
+</main>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
