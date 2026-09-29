@@ -85,3 +85,12 @@ These are all from the Goldie Street pack in Google Drive:
 - Site Logistics & Phasing Rev C
 
 The massing is built from the pack's quantities and levels: 30.18 m frontage, 769 m² L0 plate, 670 / 525 m² L1 / L2 plates, and the RLs in the methodology. It is **indicative, not the HAL architectural model**. The next step is to import the architect's IFC model and tag its elements to these stages. Not for construction.
+
+## Sending to people without Claude
+
+`share/` holds two standalone single-file versions with everything built in:
+
+- `Goldie_Street_Build_Sequence.html`
+- `Goldie_Street_House_Fitout.html`
+
+Email them or put them on a shared drive. The recipient downloads each file and double-clicks it to open it in any modern browser. No login and no server are needed. If you change the source, rebuild them by bundling `js/app.js` and `js/fitout-app.js` with esbuild (`--bundle --format=iife --alias:three=./vendor/three.module.min.js`) and inlining the result in place of the module script.
