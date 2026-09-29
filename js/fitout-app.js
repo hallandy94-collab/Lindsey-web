@@ -71,7 +71,7 @@ windows('s', 'seq', 'd0', 'd1');
 windows('rs', 'rseq', 'rd0', 'rd1');
 
 // ------------------------------------------------------------------ state
-const state = { t: 0.999, house: 0, playing: false, playTo: null, speed: 1, ghost: true, highlight: true, cutaway: true, ceilings: true, stairType: 'straight', exploded: true, labels: false, ctx: true, autoCam: true, level: 'all' };
+const state = { t: 0.999, house: 0, playing: false, playTo: null, speed: 1, ghost: true, highlight: true, cutaway: true, ceilings: true, stairType: 'spiral', exploded: true, labels: false, ctx: true, autoCam: true, level: 'all' };
 const prog = (t, s, d0, d1) => { const a = t - s; return a <= d0 ? 0 : a >= d1 ? 1 : (a - d0) / (d1 - d0); };
 const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 const accent = new THREE.Color();
