@@ -8,6 +8,7 @@
 // plates, RLs from the methodology). It is indicative, not the HAL design.
 
 import * as THREE from 'three';
+import { rectMinus, STAIR_HOLE } from './fitout-model.js';
 
 export const DIM = {
   W: 30.18,          // frontage
@@ -101,7 +102,10 @@ export function buildModel(stageIndex) {
   staticBox(ground, X0, gb, D.SITE_D, X1, D.GL, Z1, MAT.soil, soilM);            // behind site
   staticBox(ground, X0, gb, 0, 0, D.GL, D.SITE_D, MAT.soil, soilM);              // north
   staticBox(ground, D.W, gb, 0, X1, D.GL, D.SITE_D, MAT.soil, soilM);            // south
-  staticBox(ground, 0, gb, D.BD, D.W, D.GL, D.SITE_D, MAT.soil, soilM);          // east garden
+  // east garden, with the five pool pits cut out
+  for (const [a, b, c, d] of rectMinus([0, D.BD, D.W, D.SITE_D], [0, 1, 2, 3, 4].map(h => { const cx = D.W / 5 * (h + 0.5); return [cx - 1.5, 30, cx + 1.5, 35]; })))
+    staticBox(ground, a, gb, b, c, D.GL, d, MAT.soil, soilM);
+  for (let h = 0; h < 5; h++) { const cx = D.W / 5 * (h + 0.5); staticBox(ground, cx - 1.5, gb, 30, cx + 1.5, D.GL - 1.6, 35, MAT.soil, soilM); }
   staticBox(ground, X0, gb, Z0, X1, D.GL - 0.02, 0, MAT.soil, soilM);            // under street
   staticBox(ground, 0, gb, 0, D.W, D.FORM, D.BD, MAT.soilDeep, soilM);           // below formation
   // surface finishes
@@ -421,6 +425,12 @@ export function buildModel(stageIndex) {
   // plant / bin room walls
   box(12, D.L0, D.BD - 5, 12.15, lgSoffit, D.BD - 0.5, MAT.precast, { stage: 'undercroft', seq: 30 });
   box(18, D.L0, D.BD - 5, 18.15, lgSoffit, D.BD - 0.5, MAT.precast, { stage: 'undercroft', seq: 31 });
+  // painted internal wall lining to the basement perimeter (over the Nuradrain board)
+  { const fi = 0.3 + 0.1 + 0.07, t = 0.15, top = lgSoffit - 0.05, col = 0xd8d6cf;
+    box(D.W - fi - t, D.L0, D.RAMP_L + 0.3, D.W - fi, top, D.BD - fi, col, { stage: 'undercroft', seq: 32, anim: 'rise' });
+    box(fi, D.L0, D.BD - fi - t, D.W - fi, top, D.BD - fi, col, { stage: 'undercroft', seq: 32, anim: 'rise' });
+    box(fi, D.L0, D.RAMP_L + 0.3, fi + t, top, D.BD - fi, col, { stage: 'undercroft', seq: 32, anim: 'rise' });
+    box(0.4 + D.RAMP_W + 0.2, D.L0, fi, D.W - 0.6 - D.RAMP_W, top, fi + t, col, { stage: 'undercroft', seq: 32, anim: 'rise' }); }
   // stairs – one per house, sloped
   for (let h = 0; h < 5; h++) {
     const x = HOUSE_W * h + 1.4, run = 4.2, rise = lgSoffit - D.L0 + 0.1;
@@ -460,31 +470,39 @@ export function buildModel(stageIndex) {
   crane130a.userData.el.slew = [15, 32.5];
 
   // ------------------------------------------------------------- 13 LG planks + topping
-  const planks = (y, depth, stage, seqBase, skip) => {
+  // holes: list of [x0, z0, x1, z1] openings cut out of the planks (stairs, ramp mouths)
+  const planks = (y, depth, stage, seqBase, holes = []) => {
     const cols = Math.round(D.W / 2.4), pw = D.W / cols;
     const rows = Math.max(1, Math.round(depth / 7.4)), pd = depth / rows;
     let k = 0;
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      if (skip && skip(c, r)) continue;
-      box(c * pw + 0.02, y, r * pd + 0.02, (c + 1) * pw - 0.02, y + D.PLANK, (r + 1) * pd - 0.02, 0xc8c4ba,
-        { stage, seq: seqBase + k++ });
+      const pieces = rectMinus([c * pw + 0.02, r * pd + 0.02, (c + 1) * pw - 0.02, (r + 1) * pd - 0.02], holes);
+      if (!pieces.length) continue;
+      const seq = seqBase + k++;
+      for (const [a, b, cc, d] of pieces) box(a, y, b, cc, y + D.PLANK, d, 0xc8c4ba, { stage, seq });
     }
     return k;
   };
-  const topping = (y, depth, stage, seq) => box(0, y, 0, D.W, y + D.TOP, depth, 0xb4b1a9, { stage, seq, anim: 'rise' }, { roughness: 0.5 });
+  const topping = (y, depth, stage, seq, holes = []) => {
+    for (const [a, b, c, d] of rectMinus([0, 0, D.W, depth], holes))
+      box(a, y, b, c, y + D.TOP, d, 0xb4b1a9, { stage, seq, anim: 'rise' }, { roughness: 0.5 });
+  };
+  // spiral stair opening in every house (house-local STAIR_HOLE, 0.075 in from the party wall)
+  const STAIR_HOLES = [0, 1, 2, 3, 4].map(h => { const x = HOUSE_W * h + 0.075; return [x + STAIR_HOLE[0], STAIR_HOLE[1], x + STAIR_HOLE[2], STAIR_HOLE[3]]; });
 
-  // Ramp mouths: no LG floor over the two ramp corridors for the first plank row (z < 8.5), so the
-  // ramps run under L1 with >2.2 m headroom. Houses 1 and 5 start their LG floor behind the mouth.
-  const PLANK_COLS = Math.round(D.W / 2.4), PW = D.W / PLANK_COLS, MOUTH_Z = D.BD / 3;
+  // Ramp mouths: no LG floor over the two ramp corridors back to z = 11, where the ramp has
+  // dropped enough to give 2.35 m clear under the LG soffit (min 2.2 m). The ramps run under L1
+  // before that. Houses 1 and 5 start their LG floor behind the mouth.
+  const PLANK_COLS = Math.round(D.W / 2.4), PW = D.W / PLANK_COLS, MOUTH_Z = 11;
   const MOUTH_X0 = 2 * PW, MOUTH_X1 = D.W - 2 * PW;
+  const MOUTHS = [[-0.1, -0.1, MOUTH_X0, MOUTH_Z], [MOUTH_X1, -0.1, D.W + 0.1, MOUTH_Z]];
   const inMouthZone = (x, z) => z < MOUTH_Z && (x < MOUTH_X0 || x > MOUTH_X1);
   props(D.L0, lgSoffit, D.BD, 'lg', 'roof', 0, inMouthZone);
-  const nLG = planks(lgSoffit, D.BD, 'lg', 1, (c, r) => r === 0 && (c < 2 || c >= PLANK_COLS - 2));
-  box(0, lgSoffit + D.PLANK, MOUTH_Z, D.W, lgSoffit + D.PLANK + D.TOP, D.BD, 0xb4b1a9, { stage: 'lg', seq: nLG + 2, anim: 'rise' }, { roughness: 0.5 });
-  box(MOUTH_X0, lgSoffit + D.PLANK, 0, MOUTH_X1, lgSoffit + D.PLANK + D.TOP, MOUTH_Z, 0xb4b1a9, { stage: 'lg', seq: nLG + 2, anim: 'rise' }, { roughness: 0.5 });
-  // edge beams / upstands finishing the LG slab edge around each ramp mouth
+  const nLG = planks(lgSoffit, D.BD, 'lg', 1, MOUTHS);
+  topping(lgSoffit + D.PLANK, D.BD, 'lg', nLG + 2, MOUTHS);
+  // upstand kerb finishing the LG slab edge at each ramp mouth (no downstand – keeps headroom)
   for (const [a, b] of [[0, MOUTH_X0], [MOUTH_X1, D.W]])
-    box(a, lgSoffit - 0.35, MOUTH_Z - 0.3, b, lgSoffit + D.PLANK + D.TOP, MOUTH_Z, MAT.insitu, { stage: 'lg', seq: nLG + 3, anim: 'rise' });
+    box(a, lgSoffit, MOUTH_Z - 0.2, b, lgSoffit + D.PLANK + D.TOP + 0.1, MOUTH_Z, MAT.insitu, { stage: 'lg', seq: nLG + 3, anim: 'rise' });
   // 130 t AT works only from the Goldie St bays, relocating along the frontage so it is
   // never stood on (or trapped by) the deck: plank set-ups N / S, panel set-ups per house pair
   const crane130b = makeCrane(1, 30); crane130b.position.set(8, D.GL, -5.5);
@@ -510,8 +528,8 @@ export function buildModel(stageIndex) {
   // ------------------------------------------------------------- 15 L1 planks, balconies, topping
   const l1S = D.L1 - D.TOP - D.PLANK;
   props(D.LG, l1S, D.HD1, 'l1', 'roof', 0);
-  const nL1 = planks(l1S, D.HD1, 'l1', 1);
-  topping(l1S + D.PLANK, D.HD1, 'l1', nL1 + 8);
+  const nL1 = planks(l1S, D.HD1, 'l1', 1, STAIR_HOLES);
+  topping(l1S + D.PLANK, D.HD1, 'l1', nL1 + 8, STAIR_HOLES);
   for (let h = 0; h < 5; h++) box(HOUSE_W * h + 0.6, D.L1 - 0.25, -1.8, HOUSE_W * (h + 1) - 0.6, D.L1, 0, MAT.precast, { stage: 'l1', seq: nL1 + 2 + h });
 
   partyWalls(D.L1, D.L2 - D.TOP - D.PLANK, D.HD1, 'w2', 0, true);
@@ -519,8 +537,8 @@ export function buildModel(stageIndex) {
   // ------------------------------------------------------------- 17 L2
   const l2S = D.L2 - D.TOP - D.PLANK;
   props(D.L1, l2S, D.HD1, 'l2', 'roof', 0);
-  const nL2 = planks(l2S, D.HD1, 'l2', 1);
-  topping(l2S + D.PLANK, D.HD1, 'l2', nL2 + 8);
+  const nL2 = planks(l2S, D.HD1, 'l2', 1, STAIR_HOLES);
+  topping(l2S + D.PLANK, D.HD1, 'l2', nL2 + 8, STAIR_HOLES);
   for (let h = 0; h < 5; h++) box(HOUSE_W * h + 0.6, D.L2 - 0.25, -1.8, HOUSE_W * (h + 1) - 0.6, D.L2, 0, MAT.precast, { stage: 'l2', seq: nL2 + 2 + h });
 
   // ------------------------------------------------------------- 19 steel, L2 framing, roof
@@ -629,7 +647,7 @@ export function buildModel(stageIndex) {
     box(x0, D.ROOF - 0.4, D.HD2 - 0.2, x1, D.ROOF + 0.6, D.HD2 - 0.1, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
     // LG plinth render (Houses 1 and 5: render the ramp-mouth head and the set-back LG front instead)
     if (h === 0 || h === 4) {
-      box(x0, lgSoffit - 0.35, MOUTH_Z - 0.32, x1, D.LG + 0.05, MOUTH_Z - 0.3, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
+      box(x0, lgSoffit, MOUTH_Z - 0.22, x1, D.LG + 0.05, MOUTH_Z - 0.2, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
       box(x0, D.L1 - 0.45, -0.1, x1, D.L1 - 0.2, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
     } else box(x0, D.GL, -0.1, x1, D.LG + 0.05, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
   }
@@ -641,7 +659,8 @@ export function buildModel(stageIndex) {
     box(HOUSE_W * h + 0.6, y, -1.8, HOUSE_W * (h + 1) - 0.6, y + 0.03, 0, 0x9c6b3f, { stage: 'facade', seq: 17 + h, house: h, anim: 'fade' });
 
   // ------------------------------------------------------------- 23 carpark doors & balustrades
-  for (const xa of [0.4, D.W - 0.4 - D.RAMP_W]) box(xa, D.L0 + 0.8, D.RAMP_L - 0.1, xa + D.RAMP_W, D.GL + 0.4, D.RAMP_L, MAT.door, { stage: 'doors', seq: 0, anim: 'rise' }, { metalness: 0.5 });
+  // Metalbilt carpark doors at the ramp mouths, shown open (rolled up into the head under the LG slab edge)
+  for (const xa of [0.4, D.W - 0.4 - D.RAMP_W]) box(xa, lgSoffit - 0.4, MOUTH_Z - 0.1, xa + D.RAMP_W, lgSoffit, MOUTH_Z + 0.35, MAT.door, { stage: 'doors', seq: 0, anim: 'rise' }, { metalness: 0.5 });
   for (let h = 0; h < 5; h++) for (const y of [D.L1, D.L2])
     box(HOUSE_W * h + 0.6, y, -1.85, HOUSE_W * (h + 1) - 0.6, y + 1.05, -1.78, MAT.balustrade, { stage: 'doors', seq: 1 + h, house: h, anim: 'rise' }, { transparent: true, opacity: 0.4 });
 
@@ -653,7 +672,7 @@ export function buildModel(stageIndex) {
     for (const y of [D.L1 - 0.6, D.L2 - 0.6, D.ROOF - 0.7])
       box(HOUSE_W * h + 0.8, y, 3, HOUSE_W * h + 1.2, y + 0.3, D.HD2 - 2, MAT.duct2, { stage: 'services', seq: h * 3, house: h, anim: 'fade' });
     // plumbing stack
-    cyl(HOUSE_W * h + 2.2, D.L0, 14, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
+    cyl(HOUSE_W * h + 2.2, D.L0, 20.8, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
     // HWCs in basement
     for (const dx of [0, 0.8]) cyl(HOUSE_W * h + 3 + dx, D.L0, 22.5, 0.33, 1.8, 0xe8e8e8, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 14);
   }
@@ -863,7 +882,8 @@ export function buildModel(stageIndex) {
   box(-1.5, D.GL + 0.001, -8.0, D.W + 1.5, D.GL + 0.012, -3.05, 0x3f4247, { stage: 'extfront', seq: 7, anim: 'fade' }, { roughness: 0.95 });
   for (let x = -1.5; x <= D.W + 1.6; x += 2.5) box(x, D.GL + 0.012, -8.0, x + 0.12, D.GL + 0.02, -3.2, 0xf2f2ee, { stage: 'extfront', seq: 7.5, anim: 'fade' });
   // street trees in the berm
-  for (let x = 6; x < 24; x += 3) {
+  // berm trees on the party-wall lines, clear of each house's gate
+  for (const x of [HOUSE_W, HOUSE_W * 2, HOUSE_W * 3, HOUSE_W * 4]) {
     const t = tree(root, x, D.GL, -1.5, 0.45); root.remove(t);
     add(t, { stage: 'soft', seq: 5, anim: 'grow' });
   }

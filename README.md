@@ -53,6 +53,15 @@ This is a separate visual for the fitout of one terrace house (LG, L1 and L2), s
 - **Display toggles**: see-through ceilings and room names.
 - **Deep links**: e.g. `fitout.html#h3-tile`.
 
+## Walkthrough (`walkthrough.html`)
+
+A walkthrough of the completed project at eye height (1.6 m). It uses the finished whole-building model with House 2 fully fitted out inside.
+
+- **Guided tour** (about 2 minutes, 17 stops): Goldie Street, front entry, LG entry, spiral stair, kitchen, living, LG terrace, pool, garden, basement carpark, undercroft, L1 landing, bedroom 4, L2 master, ensuite, L2 terrace, and a final aerial. Each stop has a caption on its finishes. Click any stop in the route list, or on the timeline, to jump to it.
+- **Walk it yourself**: W A S D or arrow keys to walk, drag to look, Shift to go faster. On phones, use the on-screen stick. You can't walk through walls, and you can walk down the ramps into the basement and between floors. The *Go to* buttons jump to the street, LG, L1, L2, the garden or the basement.
+
+The room layout is indicative, drawn to the pack's shell sizes. It is not the HAL floor plan.
+
 ## Running locally
 
 It uses ES modules, so serve the folder rather than opening the file directly:
@@ -88,9 +97,10 @@ The massing is built from the pack's quantities and levels: 30.18 m frontage, 76
 
 ## Sending to people without Claude
 
-`share/` holds two standalone single-file versions with everything built in:
+`share/` holds standalone single-file versions with everything built in, plus MP4 videos:
 
-- `Goldie_Street_Build_Sequence.html`
-- `Goldie_Street_House_Fitout.html`
+- `Goldie_Street_Build_Sequence.html` / `.mp4`
+- `Goldie_Street_House_Fitout.html` / `.mp4`
+- `Goldie_Street_Walkthrough.html` / `.mp4`
 
 Email them or put them on a shared drive. The recipient downloads each file and double-clicks it to open it in any modern browser. No login and no server are needed. If you change the source, rebuild them by bundling `js/app.js` and `js/fitout-app.js` with esbuild (`--bundle --format=iife --alias:three=./vendor/three.module.min.js`) and inlining the result in place of the module script.

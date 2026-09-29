@@ -16,27 +16,46 @@ export const ROOF_Y = 9.49;
 const CEIL = 2.7;                  // ceiling lining height above FFL
 const LIFT = { x0: 4.4, x1: 5.65, z0: 15.6, z1: 16.9 };
 const STAIR = { x0: 0.12, x1: 1.2, z0: 8, z1: 12.5 };
+// slab opening for the 1.8 m spiral stair (centre x 1.1, z 10.25)
+export const STAIR_HOLE = [0.05, 9.15, 2.2, 11.35];
+// rectangle minus holes → list of rectangles [x0, z0, x1, z1]
+export function rectMinus(r, holes) {
+  let out = [r];
+  for (const [hx0, hz0, hx1, hz1] of holes) {
+    const next = [];
+    for (const [x0, z0, x1, z1] of out) {
+      if (hx1 <= x0 || hx0 >= x1 || hz1 <= z0 || hz0 >= z1) { next.push([x0, z0, x1, z1]); continue; }
+      if (hz0 > z0) next.push([x0, z0, x1, hz0]);
+      if (hz1 < z1) next.push([x0, hz1, x1, z1]);
+      const zz0 = Math.max(z0, hz0), zz1 = Math.min(z1, hz1);
+      if (hx0 > x0) next.push([x0, zz0, hx0, zz1]);
+      if (hx1 < x1) next.push([hx1, zz0, x1, zz1]);
+    }
+    out = next;
+  }
+  return out.filter(([a, b, c, d]) => c - a > 0.01 && d - b > 0.01);
+}
 
 // walls: [x0, z0, x1, z1, doorStart?] – door gaps are 0.85 wide along the wall
 const WALLS = {
   LG: [[4.2, 3.5, 4.2, 6, 4.2], [4.2, 6, W, 6], [4.2, 11, W, 11], [4.2, 11, 4.2, 15.3, 11.3], [4.2, 15.3, W, 15.3]],
-  L1: [[0, 5, W, 5, 0.3], [3.2, 5, 3.2, 8.5, 5.4], [1.4, 8.5, W, 8.5], [1.4, 8.5, 1.4, 13.5, 12.4], [1.4, 13.5, W, 13.5],
+  L1: [[0, 5, W, 5, 0.3], [3.2, 5, 3.2, 8.5, 5.4], [2.1, 8.5, W, 8.5], [2.1, 8.5, 2.1, 13.5, 12.4], [2.1, 13.5, W, 13.5],
        [3.2, 13.5, 3.2, 15.4, 13.8], [3.2, 15.4, W, 15.4], [0, 17, W, 17, 0.3]],
-  L2: [[0, 7, W, 7, 0.3], [1.4, 7, 1.4, 14, 7.6], [1.4, 10, W, 10, 3.6], [1.4, 14, W, 14, 2.2]],
+  L2: [[0, 7, W, 7, 0.3], [2.1, 7, 2.1, 14, 7.6], [2.1, 10, W, 10, 3.6], [2.1, 14, W, 14, 2.4]],
 };
 // wet rooms
 const WET = {
   LG: [{ name: 'Powder', x0: 4.2, z0: 3.5, x1: W, z1: 6, wc: [5.4, 5.55], basin: [4.75, 5.6] }],
   L1: [{ name: 'Bath 2', x0: 3.2, z0: 5, x1: W, z1: 8.5, wc: [5.45, 5.4], basin: [3.9, 5.3], bath: [3.4, 7.7, W - 0.1, 8.4] },
        { name: 'Bath 3', x0: 3.2, z0: 13.5, x1: W, z1: 15.4, wc: [3.6, 15.05], basin: [4.1, 13.8], shower: [4.8, 13.6, W - 0.05, 15.3] }],
-  L2: [{ name: 'Ensuite', x0: 1.4, z0: 10, x1: W, z1: 14, wc: [5.45, 13.6], basin: [2.3, 13.7], basin2: [3.4, 13.7], shower: [4.4, 10.1, W - 0.05, 11.9], bath: [2.2, 11.6, 3.9, 12.4] }],
+  L2: [{ name: 'Ensuite', x0: 2.1, z0: 10, x1: W, z1: 14, wc: [5.45, 13.6], basin: [3.6, 13.7], basin2: [4.7, 13.7], shower: [4.4, 10.1, W - 0.05, 11.9], bath: [2.5, 11.2, 4.2, 12.0] }],
 };
-const CARPET = { L1: [[0, 0, W, 5], [1.4, 8.5, W, 13.5], [0, 17, W, 22.2]], L2: [[0, 0, W, 7], [1.4, 7, W, 10]] };
-const OAK = { LG: [[0, 0, W, 3.5], [0, 3.5, 4.2, 22.2], [4.2, 6, W, 22.2]], L1: [[0, 5, 3.2, 8.5], [0, 8.5, 1.4, 17], [1.4, 13.5, 3.2, 17]], L2: [[0, 7, 1.4, 17.4], [1.4, 14, W, 17.4]] };
+const CARPET = { L1: [[0, 0, W, 5], [2.1, 8.5, W, 13.5], [0, 17, W, 22.2]], L2: [[0, 0, W, 7], [2.1, 7, W, 10]] };
+const OAK = { LG: [[0, 0, W, 3.5], [0, 3.5, 4.2, 22.2], [4.2, 6, W, 22.2]], L1: [[0, 5, 3.2, 8.5], [0, 8.5, 2.1, 13.5], [0, 13.5, 3.2, 17]], L2: [[0, 7, 2.1, 17.4], [2.1, 14, W, 17.4]] };
 export const ROOMS = {
   LG: [['Entry', 2.1, 1.7], ['Powder', 5.05, 4.7], ['Kitchen', 2.7, 9], ['Scullery', 5.05, 13], ['Dining', 2.4, 15], ['Living', 2.9, 19.6]],
-  L1: [['Bed 2', 2.9, 2.5], ['Bath 2', 4.6, 6.4], ['Bed 3', 3.6, 11], ['Bath 3', 4.2, 14.4], ['Landing', 0.7, 15], ['Bed 4', 2.9, 19.6]],
-  L2: [['Master', 2.9, 3.5], ['Robe', 3.6, 8.5], ['Ensuite', 3.1, 12.5], ['Lounge', 2.2, 15.7], ['Terrace', 2.9, 19.8]],
+  L1: [['Bed 2', 2.9, 2.5], ['Bath 2', 4.6, 6.4], ['Bed 3', 4.0, 11], ['Bath 3', 4.2, 14.4], ['Landing', 0.7, 15], ['Bed 4', 2.9, 19.6]],
+  L2: [['Master', 2.9, 3.5], ['Robe', 4.0, 8.5], ['Ensuite', 3.6, 12.8], ['Lounge', 2.2, 15.7], ['Terrace', 2.9, 19.8]],
 };
 
 export const COL = {
@@ -124,7 +143,9 @@ export function buildHouse(stageIndex) {
     const near = box(-0.15, l.y, 0, 0, l.y + hgt, l.depth, COL.concrete, null, { roughness: 0.9 });
     nearWall.add(near);
     // slab under the level
-    shell.add(box(-0.15, l.y - 0.275, 0, W + 0.15, l.y, l.depth, COL.slab));
+    if (l.id === 'LG') shell.add(box(-0.15, l.y - 0.275, 0, W + 0.15, l.y, l.depth, COL.slab));
+    else for (const [a, b, c, d] of rectMinus([-0.15, 0, W + 0.15, l.depth], [STAIR_HOLE]))
+      shell.add(box(a, l.y - 0.275, b, c, l.y, d, COL.slab));
     // lift shaft (precast)
     const sh = (x0, z0, x1, z1) => shell.add(box(x0, l.y, z0, x1, l.y + hgt, z1, COL.concrete));
     sh(LIFT.x0 - 0.15, LIFT.z0 - 0.15, LIFT.x1 + 0.15, LIFT.z0);
@@ -201,9 +222,9 @@ export function buildHouse(stageIndex) {
     }
     if (l.id === 'LG') {
       // kitchen & scullery feeds, gas to hob and fire
-      pipe([[stackX - 0.2, y + 0.2, stackZ], [3.2, y + 0.2, stackZ], [3.2, y + 0.2, 10.5], [3.2, y + 0.9, 10.5]], 0.012, COL.cold, { stage: 'plumb', seq: 8 });
-      pipe([[stackX - 0.3, y + 0.25, stackZ], [3.35, y + 0.25, stackZ], [3.35, y + 0.25, 10.5], [3.35, y + 0.9, 10.5]], 0.012, COL.hot, { stage: 'plumb', seq: 8 });
-      pipe([[W - 0.2, y + 0.3, 0.3], [W - 0.2, y + 0.3, 10.2], [2.7, y + 0.3, 10.2], [2.7, y + 0.9, 10.2]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
+      pipe([[stackX - 0.2, y + 0.2, stackZ], [3.2, y + 0.2, stackZ], [3.2, y + 0.2, 12.5], [3.2, y + 0.9, 12.5]], 0.012, COL.cold, { stage: 'plumb', seq: 8 });
+      pipe([[stackX - 0.3, y + 0.25, stackZ], [3.35, y + 0.25, stackZ], [3.35, y + 0.25, 12.5], [3.35, y + 0.9, 12.5]], 0.012, COL.hot, { stage: 'plumb', seq: 8 });
+      pipe([[W - 0.2, y + 0.3, 0.3], [W - 0.2, y + 0.3, 12.55], [2.85, y + 0.3, 12.55], [2.85, y + 0.9, 12.55]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
       pipe([[W - 0.2, y + 0.3, 10.2], [W - 0.2, y + 0.3, 19.5], [0.3, y + 0.3, 19.5], [0.3, y + 0.5, 19.5]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
     }
 
@@ -215,7 +236,7 @@ export function buildHouse(stageIndex) {
       const alongX = z0 === z1, len = alongX ? x1 - x0 : z1 - z0;
       for (let s = 0.4; s < len; s += 1.8) for (const h of [0.3, 1.1]) {
         const px = alongX ? x0 + s : x0 + 0.06, pz = alongX ? z0 + 0.06 : z0 + s;
-        box(px - 0.04, y + h - 0.05, pz - 0.04, px + 0.04, y + h + 0.05, pz + 0.04, COL.box, { stage: 'elec', seq: li * 10 + 5, anim: 'fade', level: li });
+        box(px - 0.04, y + h - 0.05, pz - 0.04, px + 0.04, y + h + 0.05, pz + 0.04, COL.box, { stage: 'elec', seq: li * 10 + 5, anim: 'fade', level: li, hideAfter: 'line' });
       }
     });
     if (l.id === 'LG') box(5.75, 1.2, 13.2, 5.88, 1.9, 13.8, 0x3a4450, { stage: 'elec', seq: 9, anim: 'fade' }); // DigiHome panel
@@ -268,8 +289,10 @@ export function buildHouse(stageIndex) {
         if (alongX) box(x0, y, z0 - o, x1, y + CEIL, z0 + o, color, opts, { roughness: stage === 'final' ? 0.55 : 0.9 });
         else box(x0 - o, y, z0, x0 + o, y + CEIL, z1, color, opts, { roughness: stage === 'final' ? 0.55 : 0.9 });
       });
-      box(0.01, y + CEIL - 0.004 - off * 0.2, 0.05, W - 0.01, y + CEIL + 0.005 - off * 0.2, l.depth - 0.05, color,
-        { stage, seq: li * 20 + 19, anim: 'fade', level: li, hideAfter: hide, ceiling: true }, { roughness: 0.9 });
+      // ceilings stop at the stairwell on LG and L1
+      for (const [a, b, c, d] of rectMinus([0.01, 0.05, W - 0.01, l.depth - 0.05], li < 2 ? [STAIR_HOLE] : []))
+        box(a, y + CEIL - 0.004 - off * 0.2, b, c, y + CEIL + 0.005 - off * 0.2, d, color,
+          { stage, seq: li * 20 + 19, anim: 'fade', level: li, hideAfter: hide, ceiling: true }, { roughness: 0.9 });
     });
     // shadow-gap trims at party walls (visible lines where linings meet concrete)
     box(0.005, y + CEIL - 0.02, 0.05, 0.025, y + CEIL, l.depth - 0.05, 0x1a1a1a, { stage: 'line', seq: li * 20 + 19, anim: 'fade', level: li });
@@ -306,7 +329,7 @@ export function buildHouse(stageIndex) {
       // doors shown open 30°
       leaf.position.set(alongX ? door + 0.42 : x0, y + 1.2, alongX ? z0 : door + 0.42);
       const pivot = new THREE.Group(); pivot.position.set(alongX ? door : x0, 0, alongX ? z0 : door);
-      leaf.position.sub(pivot.position); pivot.add(leaf); pivot.rotation.y = alongX ? -0.5 : 0.5;
+      leaf.position.sub(pivot.position); pivot.add(leaf); pivot.rotation.y = alongX ? -1.35 : 1.35; // doors shown open against the wall
       const h = new THREE.Mesh(boxGeo(0.03, 0.03, 0.16), mat(COL.bronze, { metalness: 0.8, roughness: 0.3 }));
       h.position.set(leaf.position.x + (alongX ? 0.34 : 0.04), y + 1.05, leaf.position.z + (alongX ? 0.04 : 0.34)); pivot.add(h);
       g.add(pivot);
@@ -321,13 +344,13 @@ export function buildHouse(stageIndex) {
     // 15 kitchen, scullery, wardrobes, vanities
     const cab2 = (x0, z0, x1, z1, h, seq) => box(x0, y, z0, x1, y + h, z1, COL.joinery, { stage: 'kitchen', seq, level: li }, { roughness: 0.6 });
     if (l.id === 'LG') {
-      cab2(2.0, 9.2, 3.4, 12.2, 0.87, 0);           // island
+      cab2(2.3, 11.4, 3.4, 14.0, 0.87, 0);          // island (clear of the spiral stair)
       cab2(4.2 - 0.62, 8.2, 4.18, 10.9, 2.4, 1);     // tall pantry / oven tower
       cab2(W - 0.6, 11.2, W - 0.01, 15.1, 0.87, 2);  // scullery run
       box(W - 0.35, y + 1.5, 11.2, W - 0.01, y + 2.4, 15.1, COL.joinery, { stage: 'kitchen', seq: 2.5, level: li }, { roughness: 0.6 }); // wall units
     }
-    if (l.id === 'L1') { cab2(1.5, 4.35, 3.1, 4.94, 2.4, 3); cab2(1.5, 8.56, 3.0, 9.15, 2.4, 3); }
-    if (l.id === 'L2') { cab2(1.5, 7.06, W - 0.01, 7.65, 2.4, 3); cab2(1.5, 9.35, 3.4, 9.94, 2.4, 3); }
+    if (l.id === 'L1') { cab2(1.5, 4.35, 3.1, 4.94, 2.4, 3); cab2(2.2, 8.56, 3.6, 9.15, 2.4, 3); }
+    if (l.id === 'L2') { cab2(2.2, 7.06, W - 0.01, 7.65, 2.4, 3); cab2(2.2, 9.35, 3.6, 9.94, 2.4, 3); }
     WET[l.id].forEach((r, k) => {
       for (const b of [r.basin, r.basin2].filter(Boolean))
         box(b[0] - 0.5, y + 0.35, b[1] - 0.25, b[0] + 0.5, y + 0.8, b[1] + 0.25, COL.joinery, { stage: 'kitchen', seq: 4 + k, level: li }, { roughness: 0.6 });
@@ -335,7 +358,7 @@ export function buildHouse(stageIndex) {
 
     // 17 benchtops
     const top2 = (x0, z0, x1, z1, h, seq) => box(x0, y + h, z0, x1, y + h + 0.03, z1, COL.bench, { stage: 'bench', seq, level: li }, { roughness: 0.25 });
-    if (l.id === 'LG') { top2(1.95, 9.15, 3.45, 12.25, 0.87, 0); top2(W - 0.62, 11.2, W - 0.01, 15.1, 0.87, 1); }
+    if (l.id === 'LG') { top2(2.25, 11.35, 3.45, 14.05, 0.87, 0); top2(W - 0.62, 11.2, W - 0.01, 15.1, 0.87, 1); }
     WET[l.id].forEach((r, k) => { for (const b of [r.basin, r.basin2].filter(Boolean)) top2(b[0] - 0.52, b[1] - 0.27, b[0] + 0.52, b[1] + 0.27, 0.8, 2 + k); });
 
     // 18 second fix: sanitaryware, appliances, lights, grilles
@@ -349,7 +372,7 @@ export function buildHouse(stageIndex) {
     if (l.id === 'LG') {
       box(4.2 - 0.6, y + 0.6, 9.3, 4.2 - 0.02, y + 1.5, 10.0, COL.appliance, { stage: 'fitoff', seq: 20 }, { roughness: 0.3, metalness: 0.5 }); // ovens
       box(4.2 - 0.62, y, 10.95, 4.18, y + 2.0, 11.0, 0x777d83, { stage: 'fitoff', seq: 20 }, { metalness: 0.7 });
-      box(2.4, y + 0.9, 9.6, 3.0, y + 0.905, 10.3, COL.appliance, { stage: 'fitoff', seq: 20 }); // hob
+      box(2.55, y + 0.9, 12.2, 3.15, y + 0.905, 12.9, COL.appliance, { stage: 'fitoff', seq: 20 }); // hob
     }
     const lights = [];
     for (let x = 0.9; x < W; x += 1.8) for (let z = 1; z < l.depth; z += 2)
@@ -359,7 +382,7 @@ export function buildHouse(stageIndex) {
 
     // 21 floors: oak + carpet + protection
     const oakMat = () => ({ map: oakTex(), roughness: 0.55 });
-    (OAK[l.id] || []).forEach(([x0, z0, x1, z1], k) => {
+    (OAK[l.id] || []).flatMap(r => rectMinus(r, li > 0 ? [STAIR_HOLE] : [])).forEach(([x0, z0, x1, z1], k) => {
       const m = box(x0 + 0.01, y + 0.001, z0 + 0.01, x1 - 0.01, y + 0.02, z1 - 0.01, 0xffffff, { stage: 'floor', seq: li * 6 + k, anim: 'fade', level: li }, oakMat());
       m.material.map.repeat.set((x1 - x0) / 1.8, (z1 - z0) / 1.6);
       box(x0 + 0.05, y + 0.02, z0 + 0.05, x1 - 0.05, y + 0.03, z1 - 0.05, COL.protect, { stage: 'floor', seq: li * 6 + k + 0.5, anim: 'fade', level: li, rm: 'handover', rmSeq: li, temp: true });

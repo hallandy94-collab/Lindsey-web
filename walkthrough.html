@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Goldie Street Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: the model fills the screen at eye height; a thin header, a caption card and the
+   tour transport float over it. The route list sits on the right on wide screens. */
+:root {
+  --bg: #e9ecea; --panel: #f7f8f6; --ink: #16202a; --muted: #5a6672; --line: #d0d6d3;
+  --accent: #1f5fbf; --accent-ink: #ffffff;
+  --glass: rgba(247, 248, 246, 0.9);
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f151b; --panel: #141c24; --ink: #e5eaee; --muted: #93a0ac; --line: #26323d; --accent: #6ea0ff; --accent-ink: #0b1220; --glass: rgba(20, 28, 36, 0.9); color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f151b; --panel: #141c24; --ink: #e5eaee; --muted: #93a0ac; --line: #26323d; --accent: #6ea0ff; --accent-ink: #0b1220; --glass: rgba(20, 28, 36, 0.9); color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--f-body); display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+[hidden] { display: none !important; }
+button, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.bar { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; min-width: 0; }
+.brand h1 { margin: 0; font: 700 26px/1 var(--f-display); text-transform: uppercase; letter-spacing: 0.01em; }
+.brand span { color: var(--muted); font-size: 13px; }
+.brand a { color: var(--accent); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.brand a:hover { text-decoration: underline; }
+.modes { margin-left: auto; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.modes button { border: 0; background: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font: 600 14px var(--f-display); letter-spacing: 0.05em; text-transform: uppercase; }
+.modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: 0; }
+#viewport { position: relative; min-height: 0; overflow: hidden; background: #cfdfe9; }
+#viewport canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+body[data-mode="walk"] #viewport canvas { cursor: grab; }
+#fade { position: absolute; inset: 0; background: #0b0f14; opacity: 0; pointer-events: none; }
+
+.overlay { position: absolute; z-index: 2; }
+.caption { left: 16px; bottom: 84px; max-width: min(460px, calc(100% - 32px)); background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px 14px; }
+.caption .n { font: 500 12px var(--f-mono); color: var(--muted); letter-spacing: 0.08em; }
+.caption h2 { margin: 2px 0 4px; font: 700 26px/1.05 var(--f-display); text-wrap: balance; }
+.caption p { margin: 0; font-size: 14px; }
+body[data-mode="walk"] .caption, body[data-mode="walk"] .transport { display: none; }
+
+.transport { left: 16px; right: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; background: var(--glass); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+#play { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; display: grid; place-items: center; }
+#play svg { width: 16px; height: 16px; fill: currentColor; }
+#play .i-pause { display: none; } #play[data-on="true"] .i-play { display: none; } #play[data-on="true"] .i-pause { display: block; }
+#progress { position: relative; flex: 1; min-width: 0; height: 30px; cursor: pointer; }
+#progress .track { position: absolute; left: 0; right: 0; top: 13px; height: 4px; border-radius: 2px; background: var(--line); }
+#bar { position: absolute; left: 0; top: 13px; height: 4px; border-radius: 2px; background: var(--accent); }
+#chapters { position: absolute; inset: 0; }
+.chap { position: absolute; top: 8px; height: 14px; border: 0; background: none; padding: 0; cursor: pointer; border-left: 1px solid var(--muted); opacity: 0.6; }
+.chap:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); opacity: 1; }
+#time { font: 500 12px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#speed { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 4px 6px; font-family: var(--f-mono); font-size: 12px; }
+
+.walkbar { top: 12px; left: 12px; right: 12px; display: none; gap: 6px; flex-wrap: wrap; align-items: center; }
+body[data-mode="walk"] .walkbar { display: flex; }
+.chip { border: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(6px); padding: 5px 10px; border-radius: 4px; cursor: pointer; font: 600 13px var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.hint { margin-left: auto; font-size: 12.5px; color: var(--ink); background: var(--glass); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; }
+#stick { position: absolute; left: 24px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%; background: var(--glass); border: 1px solid var(--line); display: none; touch-action: none; z-index: 3; }
+#knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: var(--accent); opacity: 0.85; pointer-events: none; }
+@media (pointer: coarse) { body[data-mode="walk"] #stick { display: block; } .hint .keys { display: none; } }
+@media (pointer: fine) { .hint .touch { display: none; } }
+
+aside.route { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+aside.route h3 { margin: 0; padding: 14px 16px 6px; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#tour-list { list-style: none; margin: 0; padding: 0 8px 12px; overflow-y: auto; min-height: 0; }
+#tour-list button { width: 100%; display: flex; gap: 10px; align-items: baseline; text-align: left; border: 0; background: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+#tour-list button:hover { background: var(--bg); }
+#tour-list button[aria-current] { background: var(--bg); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+#tour-list .n { font: 500 12px var(--f-mono); color: var(--muted); }
+.foot { margin-top: auto; padding: 8px 16px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; }
+  aside.route { display: none; }
+  .caption { bottom: 78px; left: 12px; }
+  .caption h2 { font-size: 21px; }
+  .caption p { font-size: 13px; }
+  .transport { left: 12px; right: 12px; bottom: 12px; }
+  .hint { display: none; }
+}
+</style>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<header class="bar">
+  <div class="brand">
+    <h1>Goldie Street</h1>
+    <span>Walkthrough of the completed project · House 2</span>
+    <a id="link-building" href="./index.html">Build sequence →</a>
+    <a id="link-fitout" href="./fitout.html">House fitout →</a>
+  </div>
+  <div class="modes" role="group" aria-label="Mode">
+    <button type="button" data-mode="tour" aria-pressed="true">Guided tour</button>
+    <button type="button" data-mode="walk" aria-pressed="false">Walk it yourself</button>
+  </div>
+</header>
+<main>
+  <section id="viewport" aria-label="Walkthrough of the completed building">
+    <div id="fade"></div>
+    <div class="overlay walkbar" role="group" aria-label="Go to">
+      <button class="chip" type="button" data-place="street">Street</button>
+      <button class="chip" type="button" data-place="lg">LG entry</button>
+      <button class="chip" type="button" data-place="l1">L1</button>
+      <button class="chip" type="button" data-place="l2">L2 master</button>
+      <button class="chip" type="button" data-place="garden">Garden &amp; pool</button>
+      <button class="chip" type="button" data-place="basement">Basement</button>
+      <span class="hint"><span class="keys">W A S D or arrows to walk · drag to look · Shift to hurry</span><span class="touch">Stick to walk · drag to look</span></span>
+    </div>
+    <div class="overlay caption" aria-live="polite">
+      <div class="n" id="cap-n">01 / 17</div>
+      <h2 id="cap-title">Goldie Street</h2>
+      <p id="cap-text"></p>
+    </div>
+    <div class="overlay transport">
+      <button id="play" type="button" aria-label="Play tour"><svg class="i-play" viewBox="0 0 16 16"><path d="M4 2v12l10-6z"/></svg><svg class="i-pause" viewBox="0 0 16 16"><path d="M3 2h4v12H3zM9 2h4v12H9z"/></svg></button>
+      <div id="progress" role="slider" aria-label="Tour position" tabindex="0"><div class="track"></div><div id="bar"></div><div id="chapters"></div></div>
+      <span id="time">0:00</span>
+      <select id="speed" aria-label="Tour speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+    </div>
+    <div id="stick" aria-hidden="true"><div id="knob"></div></div>
+  </section>
+  <aside class="route">
+    <h3>The route</h3>
+    <ol id="tour-list"></ol>
+    <div class="foot">Room layout is indicative, drawn to the shell sizes in the pack. It is not the HAL floor plan. Finishes are from the Estimate Rev A and Methodology Rev C. Not for construction.</div>
+  </aside>
+</main>
+<script type="module" src="./js/walk-app.js"></script>
+</body>
+</html>
