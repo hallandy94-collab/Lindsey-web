@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Goldie Street Build Sequence</title>
+<title>Goldie Street House Fitout</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -63,8 +63,6 @@ header.bar {
 .brand { display: flex; align-items: baseline; gap: 4px 10px; min-width: 0; flex-wrap: wrap; }
 .brand h1 { margin: 0; font: 700 26px/1 var(--f-display); letter-spacing: 0.01em; text-transform: uppercase; }
 .brand span { color: var(--muted); font-size: 13px; }
-.brand a { color: var(--accent); font-size: 13px; text-decoration: none; white-space: nowrap; }
-.brand a:hover { text-decoration: underline; }
 .clock { margin-left: auto; display: flex; align-items: baseline; gap: 12px; font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .clock #week { font: 600 13px var(--f-mono); color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase; }
 .clock #date { font: 600 22px/1 var(--f-display); letter-spacing: 0.02em; }
@@ -178,27 +176,75 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 </style>
+<style>
+/* House fitout additions */
+:root { --ph-rough: #8a6a3c; --ph-close: #7d8791; --ph-wet: #2c8fb0; --ph-joinery: #4a4038; --ph-finish: #3f7d4f; --owner: #7a3f98; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ph-rough: #c89b5f; --ph-close: #a9b3bc; --ph-wet: #5bb6d6; --ph-joinery: #b9a594; --ph-finish: #6cc486; --owner: #c08ae0; } }
+:root[data-theme="dark"] { --ph-rough: #c89b5f; --ph-close: #a9b3bc; --ph-wet: #5bb6d6; --ph-joinery: #b9a594; --ph-finish: #6cc486; --owner: #c08ae0; }
+.brand a { color: var(--accent); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.brand a:hover { text-decoration: underline; }
+#houses { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+#houses button { border: 0; background: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font: 600 14px var(--f-display); letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+#houses button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+#st-trade { background: var(--ink); color: var(--panel); border-color: transparent; }
+#st-phase { border-color: transparent; color: var(--panel); background: var(--ph-rough); }
+#st-phase[data-ph="close"] { background: var(--ph-close); } #st-phase[data-ph="wet"] { background: var(--ph-wet); }
+#st-phase[data-ph="joinery"] { background: var(--ph-joinery); } #st-phase[data-ph="finish"] { background: var(--ph-finish); }
+.flag { display: block; margin: 0 0 10px; padding: 5px 10px; border-left: 4px solid var(--owner); background: color-mix(in srgb, var(--owner) 10%, transparent); font-size: 13px; }
+.flag.bench { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#st-holds li.none { background: none; color: var(--muted); padding-left: 0; }
+#st-holds li.none::before { content: none; }
+#st-scope li { padding-left: 14px; position: relative; }
+#st-scope li::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 6px; height: 2px; background: var(--muted); }
+.flow { padding: 12px 20px 10px; border-bottom: 1px solid var(--line); }
+.flow h3 { margin: 0 0 4px; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+#flowline { width: 100%; height: auto; display: block; font-family: var(--f-mono); }
+#flowline .grid { stroke: var(--line); stroke-width: 1; }
+#flowline .mo { font-size: 8.5px; fill: var(--muted); }
+#flowline .hl { font-size: 10px; fill: var(--muted); font-weight: 600; }
+#flowline .row { cursor: pointer; }
+#flowline .row.sel .hl { fill: var(--accent); }
+#flowline .row .hit { fill: transparent; }
+#flowline .row.sel .hit { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
+#flowline .row:hover .hit { fill: var(--bg); }
+#flowline .ph { opacity: 0.9; }
+.ph-rough { fill: var(--ph-rough); } .ph-close { fill: var(--ph-close); } .ph-wet { fill: var(--ph-wet); } .ph-joinery { fill: var(--ph-joinery); } .ph-finish { fill: var(--ph-finish); }
+#flowline .now { stroke: var(--accent); stroke-width: 2; }
+.flow-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 8px; font-size: 11.5px; color: var(--muted); }
+.flow-legend span { display: flex; align-items: center; gap: 5px; }
+.flow-legend i { width: 12px; height: 8px; border-radius: 2px; }
+.flow-on { font: 500 12px var(--f-mono); color: var(--muted); margin-bottom: 4px; }
+#flow-status { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 12.5px; }
+#flow-status li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 6px; }
+#flow-status li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#flow-status li.sel b { color: var(--accent); }
+aside.sheet .card { flex: 1 1 52%; }
+aside.sheet .register { flex: 1 1 28%; }
+@media (max-width: 860px) { #houses { width: 100%; overflow-x: auto; } #houses button { flex: 1; padding: 6px 4px; } }
+</style>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 </head>
 <body>
 <header class="bar">
   <div class="brand">
-    <h1>Goldie Street</h1>
-    <span>Build sequence · 10–14 Goldie St, St Heliers · 5 terrace houses over basement</span>
-    <a id="link-fitout" href="./fitout.html">House fitout →</a>
+    <h1>House Fitout</h1>
+    <span>Goldie Street · one terrace house, trade by trade · flow-line House 1 → 5</span>
+    <a id="link-building" href="./index.html">Whole building →</a>
   </div>
+  <div id="houses" role="group" aria-label="Choose house"></div>
   <div class="clock" aria-live="polite">
-    <span id="week">Week 1</span>
-    <span id="date">29 Jun 2026</span>
+    <span id="week">House 1</span>
+    <span id="date">1 Mar 2027</span>
   </div>
 </header>
 <main>
-  <section id="viewport" aria-label="3D model of the build">
+  <section id="viewport" aria-label="3D model of the house fitout">
     <div class="overlay views" role="group" aria-label="Camera views">
       <button class="chip" type="button" data-view="iso" aria-pressed="false">3D</button>
-      <button class="chip" type="button" data-view="street" aria-pressed="false">Street</button>
-      <button class="chip" type="button" data-view="basement" aria-pressed="false">Basement</button>
-      <button class="chip" type="button" data-view="plan" aria-pressed="false">Plan</button>
+      <button class="chip" type="button" data-view="side" aria-pressed="false">Section</button>
+      <button class="chip" type="button" data-view="LG" aria-pressed="false">LG plan</button>
+      <button class="chip" type="button" data-view="L1" aria-pressed="false">L1 plan</button>
+      <button class="chip" type="button" data-view="L2" aria-pressed="false">L2 plan</button>
       <button class="chip" type="button" data-view="rear" aria-pressed="false">Garden</button>
     </div>
     <details class="overlay display">
@@ -206,21 +252,11 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
       <div class="dgrid">
         <label><input id="tg-ghost" type="checkbox"> Outline of work still to come</label>
         <label><input id="tg-hl" type="checkbox"> Highlight this stage's work</label>
-        <label><input id="tg-temp" type="checkbox"> Temporary works &amp; plant</label>
-        <label><input id="tg-xray" type="checkbox"> See-through ground (piles, drains)</label>
-        <label><input id="tg-ctx" type="checkbox"> Street &amp; neighbours</label>
+        <label><input id="tg-cut" type="checkbox"> Cut away party wall &amp; roof</label>
+        <label><input id="tg-ceil" type="checkbox"> See-through ceilings</label>
+        <label><input id="tg-lbl" type="checkbox"> Room names</label>
+        <label><input id="tg-ctx" type="checkbox"> Garden &amp; neighbours</label>
         <label><input id="tg-cam" type="checkbox"> Move camera with each stage</label>
-        <span class="sub">Section cut from street</span>
-        <input id="cutz" type="range" min="0" max="24" step="0.5" value="0" aria-label="Section cut distance from street">
-        <div class="rowv"><span>Off</span><span id="cutz-v">Off</span></div>
-        <span class="sub">Show up to level</span>
-        <select id="cutlv" aria-label="Show up to level">
-          <option value="all">Whole building</option>
-          <option value="l2">Up to L2 (no roof)</option>
-          <option value="l1">Up to L1</option>
-          <option value="lg">Up to LG</option>
-          <option value="l0">Basement L0 only</option>
-        </select>
       </div>
     </details>
     <div class="overlay transport">
@@ -229,7 +265,7 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
       <button id="next" class="tbtn" type="button" aria-label="Next stage"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
       <div class="track">
         <div id="ticks"></div>
-        <input id="scrub" type="range" min="0" value="0" aria-label="Build timeline">
+        <input id="scrub" type="range" min="0" value="0" aria-label="Fitout timeline">
       </div>
       <select id="speed" aria-label="Playback speed">
         <option value="0.5">0.5×</option>
@@ -242,48 +278,42 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 
   <aside class="sheet">
     <div class="card">
-      <div class="eyebrow" id="st-n">Stage 01</div>
+      <div class="eyebrow" id="st-n">House 1 · Stage 01</div>
       <h2 id="st-title">–</h2>
       <div class="meta">
-        <span class="tag" id="st-pkg"></span>
-        <span class="tag" id="st-wk"></span>
+        <span class="tag" id="st-phase"></span>
+        <span class="tag" id="st-trade"></span>
         <span class="tag" id="st-dates"></span>
       </div>
-      <span class="ms-banner" id="st-ms" hidden></span>
-      <div id="flow" hidden><i>H1</i><i>H2</i><i>H3</i><i>H4</i><i>H5</i></div>
+      <span class="ms-banner" id="st-hold" hidden>Hold point · nothing closes in until this passes</span>
+      <span class="flag" id="st-owner" hidden>By Owner supply: dated against the flow-line. Late supply is a client risk, and this house can be leapfrogged without stopping the run.</span>
+      <span class="flag bench" id="st-bench" hidden>House 1 benchmark: the other houses don't start this trade until House 1 is signed off.</span>
       <p id="st-what"></p>
-      <div id="explode-wrap" hidden>
-        <div class="legend">
-          <span><i style="background:#cdbd8e"></i>Sand blinding 50</span>
-          <span><i style="background:#26272b"></i>Nuraply 3PTM tanking membrane</span>
-          <span><i style="background:#6ea6d8"></i>XPS insulation 40 mm</span>
-          <span><i style="background:#8d857a"></i>GAP65 hardfill 150 + blinding</span>
-          <span><i style="background:#3b3c44"></i>Nuraply 3PG to walls</span>
-          <span><i style="background:#3f7a4f"></i>Nuradrain protection / drainage board</span>
-        </div>
-        <label class="explode-btn"><input id="explode" type="checkbox"> Separate the tanking layers</label>
-      </div>
-      <div id="st-def" hidden>
-        <h3>Five lines of defence against water</h3>
-        <ul id="st-def-list"></ul>
-      </div>
-      <h3>Quantities</h3>
-      <ul id="st-qty"></ul>
+      <h3>Scope</h3>
+      <ul id="st-scope"></ul>
       <h3>Hold points</h3>
       <ul id="st-holds"></ul>
-      <dl class="facts">
-        <dt>Plant</dt><dd id="st-plant"></dd>
-        <dt>Crew</dt><dd id="st-crew"></dd>
-      </dl>
-      <div class="note" id="st-note" hidden></div>
+    </div>
+    <div class="flow">
+      <h3>Terrace flow-line · click a house</h3>
+      <svg id="flowline" viewBox="0 0 360 114" role="img" aria-label="Flow-line chart of fitout phases for Houses 1 to 5"></svg>
+      <div class="flow-legend">
+        <span><i class="ph-rough" style="background:var(--ph-rough)"></i>Framing &amp; rough-in</span>
+        <span><i style="background:var(--ph-close)"></i>Close-in &amp; linings</span>
+        <span><i style="background:var(--ph-wet)"></i>Wet areas &amp; paint</span>
+        <span><i style="background:var(--ph-joinery)"></i>Joinery &amp; fit-off</span>
+        <span><i style="background:var(--ph-finish)"></i>Floors &amp; commissioning</span>
+      </div>
+      <div class="flow-on">On site <span id="flow-date"></span></div>
+      <ul id="flow-status"></ul>
     </div>
     <div class="register">
-      <h3>Sequence · 28 stages · 29 Jun 2026 → PC Nov 2027</h3>
+      <h3 id="reg-h">House 1</h3>
       <ol id="seq"></ol>
-      <div class="foot">Massing is built from the pack's quantities and levels (30.18 m frontage, 769 m² L0, RLs from the methodology). It is indicative, not the HAL architectural model. Sources: RWC Construction Methodology Rev C, Concrete Phase Methodology Rev 6, Detailed Programme Rev C, Site Logistics Rev C. Not for construction.</div>
+      <div class="foot">Room layout is indicative, drawn to the shell sizes in the pack. It is not the HAL floor plan. Trade order is from the RWC Methodology Rev C and Programme Rev C. Per-house durations are an indicative 17-week takt with 3 weeks between houses, fitted to the programme's fitout window. Not for construction.</div>
     </div>
   </aside>
 </main>
-<script type="module" src="./js/app.js"></script>
+<script type="module" src="./js/fitout-app.js"></script>
 </body>
 </html>

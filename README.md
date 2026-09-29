@@ -19,6 +19,40 @@ It covers 28 stages from site establishment on 29 Jun 2026 to PC in Nov 2027: se
 - **Tanking stage**: tick *Separate the tanking layers* to pull the basement build-up apart (blinding, 3PTM, XPS, hardfill) and read the five lines of defence against water.
 - Deep link to a stage with `#stage-id`, e.g. `index.html#tank`.
 
+## House fitout viewer (`fitout.html`)
+
+This is a separate visual for the fitout of one terrace house (LG, L1 and L2), shown as a dollhouse cutaway. It covers 23 trade stages in order:
+
+1. Framing
+2. Plumbing and gas rough-in
+3. Electrical, data and DigiHome rough-in
+4. HVAC
+5. UFH
+6. Pre-line hold point
+7. Insulation
+8. Linings
+9. Level 5 skim
+10. Waterproofing
+11. Tiling
+12. Paint first coats
+13. Lift
+14. Doors and trims
+15. Kitchens
+16. Feature stair
+17. Benchtops
+18. Services second fix
+19. Gas fire
+20. Final paint coat
+21. Oak and carpet
+22. Commissioning
+23. Handover
+
+- **House 1–5 switch** (or keys 1–5): repeats the fitout for each house with its own dates. House 1 carries the benchmark week for the Level 5 skim and tiling.
+- **Terrace flow-line chart**: shows all five houses, with a live line for "on site today" and what each house is doing on that date. Click a house row to switch to it.
+- **Plan views**: LG, L1 and L2 plans, plus section and garden views.
+- **Display toggles**: see-through ceilings and room names.
+- **Deep links**: e.g. `fitout.html#h3-tile`.
+
 ## Running locally
 
 It uses ES modules, so serve the folder rather than opening the file directly:
@@ -37,6 +71,9 @@ three.js is vendored in `vendor/` (MIT licence), so the viewer works offline.
 | `js/stages.js` | The 28 stages: dates, weeks, package, description, quantities, hold points, plant and crew. Edit this to change the sequence text. |
 | `js/model.js` | Builds every element and tags it with the stage it is built in (and, for temporary works, the stage it comes out). |
 | `js/app.js` | Scene, sequencer, camera views, section cuts and the stage panel. |
+| `js/fitout-stages.js` | The 23 house fitout stages and the flow-line timing (start, 3-week offset, House 1 benchmark). |
+| `js/fitout-model.js` | The house model: shell, framing, services, linings, wet areas, joinery, lift, stair, floors. |
+| `js/fitout-app.js` | Fitout viewer: sequencer, house switch, flow-line chart. |
 
 ## Sources
 
