@@ -115,7 +115,7 @@ details.display[open] summary { border-bottom: 1px solid var(--line); }
 #speed { flex: none; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 4px 6px; font-family: var(--f-mono); font-size: 12px; }
 
 aside.sheet { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
-.card { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); overflow-y: auto; flex: 1 1 60%; min-height: 0; }
+.card { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .eyebrow { font: 500 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .card h2 { margin: 4px 0 10px; font: 700 28px/1.05 var(--f-display); text-wrap: balance; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
@@ -134,6 +134,7 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin-top: 14px; font-size: 13px; }
 .facts dt { color: var(--muted); font: 500 12px var(--f-mono); text-transform: uppercase; letter-spacing: 0.06em; padding-top: 1px; }
 .facts dd { margin: 0; }
+.crane { margin: 0 0 6px; padding: 8px 10px; border-left: 4px solid #ff7a1a; background: color-mix(in srgb, #ff7a1a 9%, transparent); font-size: 13.5px; }
 .note { margin-top: 10px; font-size: 13px; color: var(--muted); font-style: italic; }
 #st-def-list li { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
 #st-def-list b { font-weight: 600; }
@@ -146,7 +147,7 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 #flow i[data-s="done"] { background: var(--done); border-color: var(--done); color: var(--panel); }
 #flow i[data-s="now"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
-.register { flex: 1 1 40%; min-height: 0; display: flex; flex-direction: column; }
+.register { flex: 0 1 190px; min-height: 110px; display: flex; flex-direction: column; }
 .register h3 { margin: 0; padding: 10px 20px 6px; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 #seq { list-style: none; margin: 0; padding: 0 8px 12px; overflow-y: auto; min-height: 0; }
 #seq button { width: 100%; display: grid; grid-template-columns: 12px 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; padding: 5px 12px; border: 0; background: none; border-radius: 4px; cursor: pointer; }
@@ -160,7 +161,7 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 #seq button[data-state="now"] { background: var(--bg); }
 #seq button[data-state="now"] .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 #seq button[data-state="now"] .tt { font-weight: 600; }
-.foot { padding: 8px 20px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.foot { padding: 6px 20px 8px; border-top: 1px solid var(--line); font-size: 10.5px; color: var(--muted); line-height: 1.35; }
 
 @media (max-width: 860px) {
   body { overflow: auto; display: block; }
@@ -266,6 +267,10 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
       <div id="st-def" hidden>
         <h3>Five lines of defence against water</h3>
         <ul id="st-def-list"></ul>
+      </div>
+      <div id="st-crane-wrap" hidden>
+        <h3>Craneage &amp; lifting</h3>
+        <p id="st-crane" class="crane"></p>
       </div>
       <h3>Quantities</h3>
       <ul id="st-qty"></ul>

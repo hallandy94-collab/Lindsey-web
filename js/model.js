@@ -105,11 +105,11 @@ export function buildModel(stageIndex) {
   staticBox(ground, X0, gb, Z0, X1, D.GL - 0.02, 0, MAT.soil, soilM);            // under street
   staticBox(ground, 0, gb, 0, D.W, D.FORM, D.BD, MAT.soilDeep, soilM);           // below formation
   // surface finishes
-  staticBox(context, X0, D.GL - 0.02, -2.6, X1, D.GL + 0.02, 0, MAT.path);       // footpath
-  staticBox(context, X0, D.GL - 0.02, -3.0, X1, D.GL + 0.1, -2.6, MAT.kerb);     // kerb
+  staticBox(context, X0, D.GL - 0.02, -2.6, X1, D.GL + 0.02, 0, MAT.path).userData.surface = true;       // footpath
+  staticBox(context, X0, D.GL - 0.02, -3.0, X1, D.GL + 0.1, -2.6, MAT.kerb).userData.surface = true;     // kerb
   // Goldie Street: drive-in (nose-in) parking bays along the frontage (z −8 → −3), then the carriageway
-  staticBox(context, X0, D.GL - 0.04, -8.0, X1, D.GL, -3.0, 0x55585d);            // drive-in parking bays
-  staticBox(context, X0, D.GL - 0.04, -16.0, X1, D.GL, -8.0, MAT.road);          // carriageway
+  staticBox(context, X0, D.GL - 0.04, -8.0, X1, D.GL, -3.0, 0x55585d).userData.surface = true;            // drive-in parking bays
+  staticBox(context, X0, D.GL - 0.04, -16.0, X1, D.GL, -8.0, MAT.road).userData.surface = true;          // carriageway
   staticBox(context, X0, D.GL - 0.02, Z0, X1, D.GL + 0.04, -16.0, MAT.reserve);  // Vellenoweth Green
   staticBox(context, X0, D.GL, 0, -0.4, D.GL + 0.03, Z1, MAT.grass);             // neighbour lawns
   staticBox(context, D.W + 0.4, D.GL, 0, X1, D.GL + 0.03, Z1, MAT.grass);
@@ -133,7 +133,7 @@ export function buildModel(stageIndex) {
   // reserve trees
   for (const [x, z] of [[-18, -21], [-8, -32], [40, -22], [50, -30], [-30, -26], [62, -23]]) tree(context, x, D.GL, z, 1.3);
   const lbl = makeFlatLabel('GOLDIE STREET', 1.6); lbl.position.set(15, D.GL + 0.03, -13.6); context.add(lbl);
-  const lbl2 = makeFlatLabel('VELLENOWETH GREEN', 1.8); lbl2.position.set(15, D.GL + 0.06, -20); context.add(lbl2);
+  const lbl2 = makeFlatLabel('VELLENOWETH GREEN', 1.4); lbl2.position.set(15, D.GL + 0.06, -26); context.add(lbl2);
   const north = makeFlatLabel('NORTH →', 1.2); north.position.set(-8, D.GL + 0.03, -10.2); context.add(north);
 
   function tree(parent, x, y, z, s) {
@@ -186,16 +186,25 @@ export function buildModel(stageIndex) {
     g.add(body, load);
     return add(g, o);
   };
-  skip(27.8, 0xd9a21b, { stage: 'est', seq: 5, anim: 'drop', rm: 'roof', rmSeq: 5, temp: true });
+  skip(0.3, 0xd9a21b, { stage: 'est', seq: 5, anim: 'drop', rm: 'roof', rmSeq: 5, temp: true });
   skip(27.8, 0x2f6fb0, { stage: 'membrane', seq: 8, anim: 'drop', rm: 'extfront', rmSeq: 8, temp: true });
   skip(1.2, 0x2f6fb0, { stage: 'facade', seq: 20, anim: 'drop', rm: 'extfront', rmSeq: 8, temp: true });
   // timber crane mats at the 130 t standing in the bays
   const mats = (cx, stage, rm) => {
     for (const [dx, dz] of [[-4, 2.2], [-4, -2.2], [3, 2.2], [3, -2.2]])
-      box(cx + dx - 0.6, D.GL, -6.5 + dz - 0.6, cx + dx + 0.6, D.GL + 0.15, -6.5 + dz + 0.6, 0x8b6a45, { stage, seq: -1, anim: 'fade', rm, rmSeq: 100, temp: true });
+      box(cx + dx - 0.6, D.GL, -5.5 + dz - 0.6, cx + dx + 0.6, D.GL + 0.15, -5.5 + dz + 0.6, 0x8b6a45, { stage, seq: -1, anim: 'fade', rm, rmSeq: 100, temp: true });
   };
-  mats(22, 'pools', 'pools');
-  mats(15, 'lg', 'l2');
+  mats(15, 'pools', 'pools');
+  for (const x of [6, 8, 15, 22, 24]) mats(x, 'lg', 'l2');
+  // footpath closed and pedestrians escorted past during lift windows (never a load over the public)
+  for (const x of [-1.6, D.W + 1.6]) box(x - 0.2, D.GL, -2.6, x + 0.2, D.GL + 1.0, 0, 0xe8591a, { stage: 'lg', seq: -1, anim: 'rise', rm: 'l2', rmSeq: 100, temp: true });
+  { const f = makeFlatLabel('FOOTPATH CLOSED IN LIFT WINDOWS', 0.7); f.position.set(15, D.GL + 0.05, -1.3);
+    add(f, { stage: 'lg', seq: -1, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true }); }
+  // lane closure for the HPMV standing in the traffic lane while its load is lifted
+  for (let x = -3; x < 16; x += 2.5) {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 8), mat(0xff6a13)); c.position.set(x, D.GL + 0.35, -12.4);
+    add(c, { stage: 'lg', seq: -1, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true });
+  }
   // HPMV precast delivery parked in the unloading bay during the panel & plank windows
   const hpmv = new THREE.Group();
   { const cab = new THREE.Mesh(boxGeo(2.6, 3.0, 2.5), mat(0xc0392b)); cab.position.set(-0.2, 1.8, 0);
@@ -205,7 +214,7 @@ export function buildModel(stageIndex) {
     for (let k = 0; k < 3; k++) { const p = new THREE.Mesh(boxGeo(7.4, 0.2, 2.4), mat(0xc8c4ba)); p.position.set(9, 1.45 + k * 0.22, 0); hpmv.add(p); }
     for (const x of [-0.8, 5.2, 11.2, 12.4]) for (const z of [-1.1, 1.1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.35, 14), mat(0x1c1c1c)); w.rotation.x = Math.PI / 2; w.position.set(x, 0.5, z); hpmv.add(w); }
     hpmv.traverse(c => { if (c.isMesh) c.castShadow = true; }); }
-  hpmv.position.set(-0.5, D.GL, -5.3);
+  hpmv.position.set(-0.5, D.GL, -10.3);
   add(hpmv, { stage: 'lg', seq: 0, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true });
   // fitout / facade delivery truck at the unloading bay
   const deliv = makeTruck(0xf0f2f4); deliv.position.set(9.5, D.GL, -5.3);
@@ -391,9 +400,10 @@ export function buildModel(stageIndex) {
   box(D.W - 0.4 - D.RAMP_W, D.L0, D.RAMP_L, D.W - 0.4, D.L0 + 0.05, D.RAMP_L + 0.3, 0x444b52, { stage: 'ramps', seq: 4 });
 
   // ------------------------------------------------------------- props (LG, L1, L2)
-  const props = (yBot, yTop, depth, stage, rm, seqBase) => {
+  const props = (yBot, yTop, depth, stage, rm, seqBase, skipAt) => {
     let k = 0;
     for (let x = 1.8; x < D.W - 1; x += 3.6) for (let z = 1.8; z < depth - 1; z += 3.7) {
+      if (skipAt && skipAt(x, z)) continue;
       if (yBot === D.L0 && ((x < 0.4 + D.RAMP_W + 0.3 && z < D.RAMP_L) || (x > D.W - 0.7 - D.RAMP_W && z < D.RAMP_L))) continue;
       cyl(x, yBot, z, 0.05, yTop - yBot, MAT.prop, { stage, seq: seqBase + (k++ % 6) * 0.01, anim: 'rise', rm, rmSeq: k, temp: true, layer: 'prop' }, 6);
     }
@@ -419,8 +429,12 @@ export function buildModel(stageIndex) {
     st.rotation.x = -Math.atan2(rise, run);
     add(st, { stage: 'undercroft', seq: 40 + h });
   }
-  const crane55a = makeCrane(0.75); crane55a.position.set(15, D.L0, 10);
+  // 55 t AT drives down the south ramp onto the L0 slab (mats), erects the undercroft panels
+  // from the north end first and retreats south, backing out up the ramp as the walls close in
+  const crane55a = makeCrane(0.75, 12); crane55a.position.set(7, D.L0, 16);
   add(crane55a, { stage: 'undercroft', seq: 0, anim: 'fade', rm: 'undercroft', rmSeq: 99, temp: true });
+  crane55a.userData.el.setups = { undercroft: [[7, 16], [12, 15], [17, 14], [22, 12.5], [27.2, 13]] };
+  crane55a.userData.el.slew = [15, 18];
 
   // ------------------------------------------------------------- 12 pools
   for (let h = 0; h < 5; h++) {
@@ -440,8 +454,10 @@ export function buildModel(stageIndex) {
     g.position.set(cx, D.GL + 0.1, 32.5);
     add(g, { stage: 'pools', seq: h * 2 + 1 });
   }
-  const crane130a = makeCrane(1); crane130a.position.set(22, D.GL, -6.5);
+  // pool shells from the street: ~15 t at up to ~38 m radius – lift study hold point
+  const crane130a = makeCrane(1, 38); crane130a.position.set(15, D.GL, -5.5);
   add(crane130a, { stage: 'pools', seq: 0, anim: 'fade', rm: 'pools', rmSeq: 99, temp: true });
+  crane130a.userData.el.slew = [15, 32.5];
 
   // ------------------------------------------------------------- 13 LG planks + topping
   const planks = (y, depth, stage, seqBase, skip) => {
@@ -457,12 +473,24 @@ export function buildModel(stageIndex) {
   };
   const topping = (y, depth, stage, seq) => box(0, y, 0, D.W, y + D.TOP, depth, 0xb4b1a9, { stage, seq, anim: 'rise' }, { roughness: 0.5 });
 
-  props(D.L0, lgSoffit, D.BD, 'lg', 'roof', 0);
-  const nLG = planks(lgSoffit, D.BD, 'lg', 1);
-  topping(lgSoffit + D.PLANK, D.BD, 'lg', nLG + 2);
-  const crane130b = makeCrane(1); crane130b.position.set(15, D.GL, -6.5);
+  // Ramp mouths: no LG floor over the two ramp corridors for the first plank row (z < 8.5), so the
+  // ramps run under L1 with >2.2 m headroom. Houses 1 and 5 start their LG floor behind the mouth.
+  const PLANK_COLS = Math.round(D.W / 2.4), PW = D.W / PLANK_COLS, MOUTH_Z = D.BD / 3;
+  const MOUTH_X0 = 2 * PW, MOUTH_X1 = D.W - 2 * PW;
+  const inMouthZone = (x, z) => z < MOUTH_Z && (x < MOUTH_X0 || x > MOUTH_X1);
+  props(D.L0, lgSoffit, D.BD, 'lg', 'roof', 0, inMouthZone);
+  const nLG = planks(lgSoffit, D.BD, 'lg', 1, (c, r) => r === 0 && (c < 2 || c >= PLANK_COLS - 2));
+  box(0, lgSoffit + D.PLANK, MOUTH_Z, D.W, lgSoffit + D.PLANK + D.TOP, D.BD, 0xb4b1a9, { stage: 'lg', seq: nLG + 2, anim: 'rise' }, { roughness: 0.5 });
+  box(MOUTH_X0, lgSoffit + D.PLANK, 0, MOUTH_X1, lgSoffit + D.PLANK + D.TOP, MOUTH_Z, 0xb4b1a9, { stage: 'lg', seq: nLG + 2, anim: 'rise' }, { roughness: 0.5 });
+  // edge beams / upstands finishing the LG slab edge around each ramp mouth
+  for (const [a, b] of [[0, MOUTH_X0], [MOUTH_X1, D.W]])
+    box(a, lgSoffit - 0.35, MOUTH_Z - 0.3, b, lgSoffit + D.PLANK + D.TOP, MOUTH_Z, MAT.insitu, { stage: 'lg', seq: nLG + 3, anim: 'rise' });
+  // 130 t AT works only from the Goldie St bays, relocating along the frontage so it is
+  // never stood on (or trapped by) the deck: plank set-ups N / S, panel set-ups per house pair
+  const crane130b = makeCrane(1, 30); crane130b.position.set(8, D.GL, -5.5);
   add(crane130b, { stage: 'lg', seq: 0, anim: 'fade', rm: 'l2', rmSeq: 99, temp: true });
-  crane130b.userData.el.slew = true;
+  crane130b.userData.el.setups = { lg: [[8, -5.5], [22, -5.5]], w1: [[6, -5.5], [15, -5.5], [24, -5.5]], l1: [[8, -5.5], [22, -5.5]], w2: [[6, -5.5], [15, -5.5], [24, -5.5]], l2: [[8, -5.5], [22, -5.5]] };
+  crane130b.userData.el.slew = [15, 12];
 
   // ------------------------------------------------------------- 14/16 party walls
   const partyWalls = (y0, y1, depth, stage, seqOff, north) => {
@@ -477,9 +505,7 @@ export function buildModel(stageIndex) {
     }
   };
   partyWalls(D.LG, D.L1 - D.TOP - D.PLANK, D.HD1, 'w1', 0, false);
-  const crane55b = makeCrane(0.75); crane55b.position.set(15, D.LG, 11);
-  add(crane55b, { stage: 'w1', seq: 0, anim: 'fade', rm: 'w2', rmSeq: 99, temp: true });
-  crane55b.userData.el.slew = true;
+  // (no crane on the LG deck – the panels are lifted by the street crane set-ups above)
 
   // ------------------------------------------------------------- 15 L1 planks, balconies, topping
   const l1S = D.L1 - D.TOP - D.PLANK;
@@ -519,8 +545,9 @@ export function buildModel(stageIndex) {
   // parapets
   box(0, D.ROOF, -0.05, D.W, D.ROOF + 0.6, 0.15, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
   box(0, D.ROOF, D.HD2 - 0.15, D.W, D.ROOF + 0.6, D.HD2 + 0.05, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
-  const hiab = makeCrane(0.6); hiab.position.set(10, D.GL, -6.5);
+  const hiab = makeCrane(0.6, 18); hiab.position.set(10, D.GL, -5.5);
   add(hiab, { stage: 'roof', seq: 0, anim: 'fade', rm: 'roof', rmSeq: 99, temp: true });
+  hiab.userData.el.slew = [15, 9];
 
   // ------------------------------------------------------------- 20 scaffold + membrane
   const scaf = (x0, z0, x1, z1, seq) => {
@@ -578,7 +605,8 @@ export function buildModel(stageIndex) {
     add(g, { stage: 'joinery', seq, anim: 'fade', house: h });
   };
   for (let h = 0; h < 5; h++) {
-    joinery(h, D.LG + 0.05, D.L1 - 0.45, 0.02, h);
+    // Houses 1 and 5: LG front glazing sits at the back of the ramp mouth
+    joinery(h, D.LG + 0.05, D.L1 - 0.45, h === 0 || h === 4 ? MOUTH_Z : 0.02, h);
     joinery(h, D.L1 + 0.05, D.L2 - 0.45, 0.02, h + 5);
     joinery(h, D.L2 + 0.05, D.ROOF - 0.4, 0.2, h + 10);
     joinery(h, D.LG + 0.05, D.L1 - 0.45, D.HD1 - 0.02, h + 15);
@@ -595,12 +623,15 @@ export function buildModel(stageIndex) {
       box(x0, y0, D.HD1 - 0.02, x1, y1, D.HD1 + 0.1, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
     }
     // GRC feature fins at party lines (front)
-    box(x0 + 0.05, D.LG, -0.35, x0 + 0.5, D.L2 + 0.05, 0.02, MAT.grc, { stage: 'facade', seq: 5 + h, house: h, anim: 'rise' });
+    box(x0 + 0.05, h === 0 ? D.L1 - 0.45 : D.LG, -0.35, x0 + 0.5, D.L2 + 0.05, 0.02, MAT.grc, { stage: 'facade', seq: 5 + h, house: h, anim: 'rise' });
     // Nu-Wall to L2 front/back spandrels
     box(x0, D.ROOF - 0.4, 0.1, x1, D.ROOF + 0.6, 0.2, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
     box(x0, D.ROOF - 0.4, D.HD2 - 0.2, x1, D.ROOF + 0.6, D.HD2 - 0.1, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
-    // LG plinth render
-    box(x0, D.GL, -0.1, x1, D.LG + 0.05, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
+    // LG plinth render (Houses 1 and 5: render the ramp-mouth head and the set-back LG front instead)
+    if (h === 0 || h === 4) {
+      box(x0, lgSoffit - 0.35, MOUTH_Z - 0.32, x1, D.LG + 0.05, MOUTH_Z - 0.3, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
+      box(x0, D.L1 - 0.45, -0.1, x1, D.L1 - 0.2, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
+    } else box(x0, D.GL, -0.1, x1, D.LG + 0.05, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
   }
   // end wall render
   box(-0.12, D.LG, 0, 0, D.ROOF + 0.6, D.HD1, MAT.render, { stage: 'facade', seq: 15, anim: 'fade' });
@@ -622,7 +653,7 @@ export function buildModel(stageIndex) {
     for (const y of [D.L1 - 0.6, D.L2 - 0.6, D.ROOF - 0.7])
       box(HOUSE_W * h + 0.8, y, 3, HOUSE_W * h + 1.2, y + 0.3, D.HD2 - 2, MAT.duct2, { stage: 'services', seq: h * 3, house: h, anim: 'fade' });
     // plumbing stack
-    cyl(HOUSE_W * h + 2.2, D.L0, 12, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
+    cyl(HOUSE_W * h + 2.2, D.L0, 14, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
     // HWCs in basement
     for (const dx of [0, 0.8]) cyl(HOUSE_W * h + 3 + dx, D.L0, 22.5, 0.33, 1.8, 0xe8e8e8, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 14);
   }
@@ -638,7 +669,8 @@ export function buildModel(stageIndex) {
       box(x0, y, depth * 0.45, x1 - 1.4, top, depth * 0.45 + 0.1, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
       box(x0 + 2.2, y, depth * 0.45, x0 + 2.3, top, depth - 0.4, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
       // oak floor
-      box(x0, y + 0.001, 0.2, x1, y + 0.03, depth - 0.2, 0xb88a57, { stage: 'fitout', seq: h * 4 + 3, house: h, anim: 'fade' });
+      const zf = y === D.LG && (h === 0 || h === 4) ? MOUTH_Z + 0.2 : 0.2; // no LG floor over the ramp mouths
+      box(x0, y + 0.001, zf, x1, y + 0.03, depth - 0.2, 0xb88a57, { stage: 'fitout', seq: h * 4 + 3, house: h, anim: 'fade' });
       // kitchen / joinery block
       box(x0 + 0.3, y, depth * 0.62, x0 + 1.9, y + 0.9, depth * 0.62 + 3, 0x3c3f44, { stage: 'fitout', seq: h * 4 + 2, house: h });
     }
@@ -845,17 +877,19 @@ export function buildModel(stageIndex) {
   }
 
   // ------------------------------------------------------------- helpers
-  function makeCrane(s) {
+  // s = size, reach = working radius shown on the ground (m)
+  function makeCrane(s, reach = 16) {
     const g = new THREE.Group();
     const carrier = new THREE.Mesh(boxGeo(10 * s, 1.6 * s, 2.8 * s), mat(MAT.crane)); carrier.position.y = 1.4 * s;
     const cab = new THREE.Mesh(boxGeo(2 * s, 1.6 * s, 2.4 * s), mat(0x2d3136)); cab.position.set(3.8 * s, 2.9 * s, 0);
     const slew = new THREE.Group(); slew.position.y = 2.4 * s;
     const house = new THREE.Mesh(boxGeo(3.4 * s, 1.6 * s, 2.4 * s), mat(MAT.crane)); house.position.set(-1 * s, 0.8 * s, 0);
-    const boomLen = 26 * s;
+    const luff = 0.8, boomLen = reach / Math.cos(luff);
     const boom = new THREE.Mesh(boxGeo(0.6 * s, 0.6 * s, boomLen), mat(MAT.crane));
     boom.geometry = boom.geometry.clone(); boom.geometry.translate(0, 0, boomLen / 2);
-    boom.position.set(0, 1.4 * s, 0); boom.rotation.x = -0.9;
-    const hook = new THREE.Mesh(boxGeo(0.05, 8 * s, 0.05), mat(0x222)); hook.position.set(0, 1.4 * s + Math.sin(0.9) * boomLen - 4 * s, Math.cos(0.9) * boomLen);
+    boom.position.set(0, 1.4 * s, 0); boom.rotation.x = -luff;
+    const tipY = 1.4 * s + Math.sin(luff) * boomLen, hookLen = Math.max(4, tipY - 6);
+    const hook = new THREE.Mesh(boxGeo(0.05, hookLen, 0.05), mat(0x222)); hook.position.set(0, tipY - hookLen / 2, reach);
     slew.add(house, boom, hook);
     // outriggers
     for (const [x, z] of [[-4, 2.6], [-4, -2.6], [3, 2.6], [3, -2.6]]) {
@@ -864,7 +898,12 @@ export function buildModel(stageIndex) {
     [carrier, cab].forEach(p => g.add(p)); g.add(slew);
     g.traverse(c => { if (c.isMesh) c.castShadow = true; });
     g.userData.slewGroup = slew;
-    slew.rotation.y = Math.PI * 0.5;
+    slew.rotation.y = 0;
+    // working radius ring and tail-swing exclusion zone, drawn on the standing level
+    const ring = new THREE.Mesh(new THREE.RingGeometry(reach - 0.15, reach + 0.15, 96), new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; g.add(ring);
+    const excl = new THREE.Mesh(new THREE.CircleGeometry(6 * s, 48), new THREE.MeshBasicMaterial({ color: 0xd62828, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+    excl.rotation.x = -Math.PI / 2; excl.position.y = 0.05; g.add(excl);
     return g;
   }
 

@@ -120,7 +120,7 @@ export function buildHouse(stageIndex) {
     const hgt = l.id === 'L2' ? ROOF_Y - 0.35 - l.y : 3.23 - 0.275;
     // party walls (exposed architectural face)
     const far = box(W, l.y, 0, W + 0.15, l.y + hgt, l.depth, COL.concrete, null, { roughness: 0.9 });
-    shell.add(far);
+    far.name = 'farWall'; shell.add(far);
     const near = box(-0.15, l.y, 0, 0, l.y + hgt, l.depth, COL.concrete, null, { roughness: 0.9 });
     nearWall.add(near);
     // slab under the level

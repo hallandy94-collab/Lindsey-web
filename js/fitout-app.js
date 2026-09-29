@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { FIT_STAGES, PHASES, HOUSES, stageDates, houseSpan } from './fitout-stages.js';
-import { buildHouse, LEVELS, W, ROOF_Y } from './fitout-model.js';
+import { buildHouse, LEVELS, W, ROOF_Y, makeLabel } from './fitout-model.js';
 
 const N = FIT_STAGES.length;
 const stageIndex = id => { const i = FIT_STAGES.findIndex(s => s.id === id); if (i < 0) throw new Error('stage ' + id); return i; };
@@ -44,6 +44,20 @@ items.forEach(o => {
   }
   o.traverse(c => { if (c.isLineSegments) return; if (c.material) el.mats.push({ m: c.material, op: c.material.opacity, tr: c.material.transparent, em: c.material.emissive ? c.material.emissive.clone() : null }); });
 });
+// Exploded floors: L1 and L2 step up and across so every floor's interior can be seen at once
+const GAP = 0.9, SHIFT = 7.4;
+const lvlOfY = y => (y >= 6.1 ? 2 : y >= 2.9 ? 1 : 0);
+items.forEach(o => { const el = o.userData.el; el.lvl = el.level ?? lvlOfY(el.bottom); });
+const stacked = [];
+for (const grp of [shell, nearWall]) grp.children.forEach(c => { box3.setFromObject(c); stacked.push({ o: c, y: c.position.y, x: c.position.x, lvl: lvlOfY(box3.min.y + 0.01) }); });
+labels.children.forEach(c => stacked.push({ o: c, y: c.position.y, x: c.position.x, lvl: c.userData.level }));
+// level tags floating at the street end of each floor
+const levelTags = new THREE.Group(); scene.add(levelTags);
+LEVELS.forEach((l, i) => {
+  const tag = makeLabel(l.id, 0.9, '#1f5fbf'); tag.position.set(W + 0.4, l.y + 3.2, 0.5);
+  levelTags.add(tag); stacked.push({ o: tag, y: tag.position.y, x: tag.position.x, lvl: i });
+});
+let explodeAmt = 1;
 function windows(key, seqKey, a, b) {
   const by = new Map();
   items.forEach(o => { const el = o.userData.el; if (el[key] == null) return; if (!by.has(el[key])) by.set(el[key], []); by.get(el[key]).push(o); });
@@ -57,7 +71,7 @@ windows('s', 'seq', 'd0', 'd1');
 windows('rs', 'rseq', 'rd0', 'rd1');
 
 // ------------------------------------------------------------------ state
-const state = { t: 0.999, house: 0, playing: false, playTo: null, speed: 1, ghost: true, highlight: true, cutaway: true, ceilings: true, stairType: 'straight', labels: false, ctx: true, autoCam: true, level: 'all' };
+const state = { t: 0.999, house: 0, playing: false, playTo: null, speed: 1, ghost: true, highlight: true, cutaway: true, ceilings: true, stairType: 'straight', exploded: true, labels: false, ctx: true, autoCam: true, level: 'all' };
 const prog = (t, s, d0, d1) => { const a = t - s; return a <= d0 ? 0 : a >= d1 ? 1 : (a - d0) / (d1 - d0); };
 const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 const accent = new THREE.Color();
@@ -100,11 +114,15 @@ function update(time) {
     const glow = el.glow === 'comm' && commOn;
     setEm(el, state.highlight && !el.temp && el.s === cs, glow);
     if (o.userData.flame) { o.userData.flame.material.emissiveIntensity = commOn ? 1.6 + Math.sin(time * 0.01) * 0.3 : 0; }
+    o.position.y += explodeAmt * GAP * el.lvl; o.position.x += explodeAmt * SHIFT * el.lvl;
     if (el.liftCar) {
       const ride = reduceMotion ? 0 : (Math.sin(time * 0.0006) + 1) / 2;
-      o.position.y = el.base.pos.y + (e >= 1 ? ride * LEVELS[2].y : 0);
+      o.position.y = el.base.pos.y + (e >= 1 ? ride * (LEVELS[2].y + explodeAmt * GAP * 2) : 0);
     }
   }
+  // exploded: the far party walls would hide the next floor along, so they drop out
+  for (const st of stacked) if (st.o.name === 'farWall') st.o.visible = explodeAmt < 0.5;
+  for (const st of stacked) { st.o.position.y = st.y + explodeAmt * GAP * st.lvl; st.o.position.x = st.x + explodeAmt * SHIFT * st.lvl; }
   warm.intensity = commOn ? 18 : 0;
   nearWall.visible = !state.cutaway;
   context.visible = state.ctx;
@@ -120,19 +138,22 @@ function applyClip() {
 
 // ------------------------------------------------------------------ camera
 const VIEWS = {
-  iso: { pos: [-13, 12, -5], tgt: [3, 3.6, 10] },
+  iso: { pos: [-13, 12, -5], tgt: [3, 3.6, 10], xpos: [2, 40, -17], xtgt: [10.4, 0.5, 10] },
   side: { pos: [-19, 5.2, 11], tgt: [3, 4.6, 11] },
-  rear: { pos: [12, 9, 34], tgt: [3, 4, 14] },
+  rear: { pos: [12, 9, 34], tgt: [3, 4, 14], xpos: [22, 22, 36], xtgt: [10.4, 2, 12] },
   LG: { pos: [3, 22, 11.2], tgt: [3, 0, 11], level: 'LG' },
   L1: { pos: [3, 25, 11.2], tgt: [3, 3.23, 11], level: 'L1' },
   L2: { pos: [3, 28, 10.2], tgt: [3, 6.46, 10], level: 'L2' },
 };
-let tween = null;
+let tween = null, explodeTarget = 1, currentView = 'iso';
 function goView(name, instant) {
   const v = VIEWS[name]; if (!v) return;
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === name));
+  currentView = name;
   state.level = v.level || 'all'; applyClip();
-  const to = { pos: new THREE.Vector3(...v.pos), tgt: new THREE.Vector3(...v.tgt) };
+  const ex = state.exploded && !v.level && name !== 'side';
+  explodeTarget = ex ? 1 : 0;
+  const to = { pos: new THREE.Vector3(...(ex && v.xpos ? v.xpos : v.pos)), tgt: new THREE.Vector3(...(ex && v.xtgt ? v.xtgt : v.tgt)) };
   if (instant || reduceMotion) { camera.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); tween = null; return; }
   tween = { from: { pos: camera.position.clone(), tgt: controls.target.clone() }, to, t0: performance.now(), dur: 1000 };
 }
@@ -288,6 +309,7 @@ scrub.addEventListener('input', () => { state.t = +scrub.value; state.playing = 
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => goView(b.dataset.view)));
 const bind = (id, key, after) => { const el = document.getElementById(id); el.checked = state[key]; el.addEventListener('change', () => { state[key] = el.checked; after && after(); }); };
 bind('tg-ghost', 'ghost'); bind('tg-hl', 'highlight'); bind('tg-cut', 'cutaway'); bind('tg-lbl', 'labels'); bind('tg-ctx', 'ctx'); bind('tg-cam', 'autoCam'); bind('tg-ceil', 'ceilings');
+bind('tg-explode', 'exploded', () => goView(currentView));
 $('#stairtype').addEventListener('change', e => { state.stairType = e.target.value; });
 window.addEventListener('keydown', e => {
   if (e.target.closest('input, select, textarea')) return;
@@ -307,6 +329,8 @@ function frame(now) {
   if (state.playing) { state.t = Math.min(N, state.t + dt * state.speed / STAGE_SECONDS); if (state.t >= N) { state.playing = false; syncPlay(); } updateReadout(); }
   else if (state.playTo != null) { state.t = Math.min(state.playTo, state.t + dt * Math.max(1, state.speed) / STAGE_SECONDS * 1.5); if (state.t >= state.playTo) state.playTo = null; updateReadout(); }
   if (tween) { const k = ease(Math.min(1, (now - tween.t0) / tween.dur)); camera.position.lerpVectors(tween.from.pos, tween.to.pos, k); controls.target.lerpVectors(tween.from.tgt, tween.to.tgt, k); if (k >= 1) tween = null; }
+  explodeAmt += (explodeTarget - explodeAmt) * (reduceMotion ? 1 : Math.min(1, dt * 4));
+  if (Math.abs(explodeTarget - explodeAmt) < 0.001) explodeAmt = explodeTarget;
   controls.update(); update(now); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
@@ -322,7 +346,7 @@ requestAnimationFrame(frame);
 let camStage = -1;
 function setT(t) {
   const i = Math.min(Math.floor(t), N - 1);
-  if (i !== camStage) { camStage = i; if (state.autoCam) goView(FIT_STAGES[i].view, true); }
+  if (i !== camStage) { camStage = i; if (state.autoCam) goView(FIT_STAGES[i].view, true); explodeAmt = explodeTarget; }
   state.playing = false; state.playTo = null; state.t = t; updateReadout();
 }
-window.__fo = { state, jumpTo, setHouse, goView, setT, N };
+window.__fo = { state, jumpTo, setHouse, goView, setT, N, cam: ([p, t]) => { tween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };

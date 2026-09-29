@@ -113,7 +113,7 @@ details.display[open] summary { border-bottom: 1px solid var(--line); }
 #speed { flex: none; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 4px 6px; font-family: var(--f-mono); font-size: 12px; }
 
 aside.sheet { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
-.card { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); overflow-y: auto; flex: 1 1 60%; min-height: 0; }
+.card { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .eyebrow { font: 500 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .card h2 { margin: 4px 0 10px; font: 700 28px/1.05 var(--f-display); text-wrap: balance; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
@@ -144,7 +144,7 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 #flow i[data-s="done"] { background: var(--done); border-color: var(--done); color: var(--panel); }
 #flow i[data-s="now"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
-.register { flex: 1 1 40%; min-height: 0; display: flex; flex-direction: column; }
+.register { flex: 0 1 190px; min-height: 110px; display: flex; flex-direction: column; }
 .register h3 { margin: 0; padding: 10px 20px 6px; font: 600 12px var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 #seq { list-style: none; margin: 0; padding: 0 8px 12px; overflow-y: auto; min-height: 0; }
 #seq button { width: 100%; display: grid; grid-template-columns: 12px 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; padding: 5px 12px; border: 0; background: none; border-radius: 4px; cursor: pointer; }
@@ -158,7 +158,7 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 #seq button[data-state="now"] { background: var(--bg); }
 #seq button[data-state="now"] .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 #seq button[data-state="now"] .tt { font-weight: 600; }
-.foot { padding: 8px 20px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.foot { padding: 6px 20px 8px; border-top: 1px solid var(--line); font-size: 10.5px; color: var(--muted); line-height: 1.35; }
 
 @media (max-width: 860px) {
   body { overflow: auto; display: block; }
@@ -218,8 +218,10 @@ aside.sheet { border-left: 1px solid var(--line); background: var(--panel); disp
 #flow-status li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 6px; }
 #flow-status li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #flow-status li.sel b { color: var(--accent); }
-aside.sheet .card { flex: 1 1 52%; }
-aside.sheet .register { flex: 1 1 28%; }
+aside.sheet .card { flex: 1 1 auto; }
+aside.sheet .register { flex: 0 1 120px; min-height: 90px; }
+#flow-status { font-size: 12px; }
+.flow { padding-block: 8px 6px; }
 @media (max-width: 860px) { #houses { width: 100%; overflow-x: auto; } #houses button { flex: 1; padding: 6px 4px; } }
 </style>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
@@ -252,6 +254,7 @@ aside.sheet .register { flex: 1 1 28%; }
       <div class="dgrid">
         <label><input id="tg-ghost" type="checkbox"> Outline of work still to come</label>
         <label><input id="tg-hl" type="checkbox"> Highlight this stage's work</label>
+        <label><input id="tg-explode" type="checkbox"> Exploded floors (lift L1 &amp; L2 apart)</label>
         <label><input id="tg-cut" type="checkbox"> Cut away party wall &amp; roof</label>
         <label><input id="tg-ceil" type="checkbox"> See-through ceilings</label>
         <label><input id="tg-lbl" type="checkbox"> Room names</label>

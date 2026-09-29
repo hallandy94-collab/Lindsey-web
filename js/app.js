@@ -41,7 +41,7 @@ const { root, items, context, ground } = buildModel(stageIndex);
 scene.add(root);
 
 // Per-item animation setup
-const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.16, depthWrite: false });
+const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.11, depthWrite: false });
 const box3 = new THREE.Box3();
 items.forEach(o => {
   const el = o.userData.el;
@@ -168,17 +168,44 @@ function update(time) {
       o.position.z = pt[1] < 0.5 ? 3 : pt[1];
     }
     if (el.drive && !reduceMotion) o.position.x = -14 + ((time * 0.004) % 60);
-    if (el.slew && !reduceMotion && o.userData.slewGroup) o.userData.slewGroup.rotation.y = Math.PI * 0.5 + Math.sin(time * 0.0004) * 0.7;
+    // cranes relocate between planned set-ups through a stage, and slew towards the work
+    if (el.setups) {
+      const list = el.setups[STAGES[cs].id] || el.setups[STAGES[el.s].id];
+      if (list) {
+        const p = STAGES[cs].id in el.setups ? t - cs : 1;
+        const pt = list[Math.min(list.length - 1, Math.floor(p * list.length))];
+        o.position.x = pt[0]; o.position.z = pt[1];
+      }
+    }
+    if (el.slew && o.userData.slewGroup) {
+      const a = Math.atan2(el.slew[0] - o.position.x, el.slew[1] - o.position.z);
+      o.userData.slewGroup.rotation.y = a + (reduceMotion ? 0 : Math.sin(time * 0.0004) * 0.35);
+    }
   }
   context.visible = state.ctx;
-  if (groundX !== state.xray) {
-    groundX = state.xray;
-    ground.traverse(c => { if (c.material) { c.material.transparent = groundX; c.material.opacity = groundX ? 0.3 : 1; c.material.depthWrite = !groundX; } });
+  // see-through ground only while the work is in the ground (up to the ramps), so services
+  // under the road and the piles show; the finished street stays solid after that
+  const xr = state.xray && cs <= XRAY_LAST;
+  if (groundX !== xr) {
+    groundX = xr;
+    const set = c => { if (c.material) { c.material.transparent = xr; c.material.opacity = xr ? 0.3 : 1; c.material.depthWrite = !xr; } };
+    ground.traverse(set);
+    context.children.forEach(c => { if (c.userData.surface) set(c); });
   }
 }
 let groundX = null;
+const XRAY_LAST = stageIndex('ramps');
 
 // ------------------------------------------------------------------ clipping
+// interior stages are shown through a section cut so the work inside can be seen
+const STAGE_CUT = { services: 6, fitout: 6 };
+function stageCut(i) {
+  if (!state.autoCam) return;
+  state.cutZ = STAGE_CUT[STAGES[i].id] || 0;
+  const el = document.getElementById('cutz'); if (el) el.value = state.cutZ;
+  const v = document.getElementById('cutz-v'); if (v) v.textContent = state.cutZ > 0 ? `${state.cutZ.toFixed(1)} m` : 'Off';
+  applyClipping();
+}
 function applyClipping() {
   const planes = [];
   if (state.cutZ > 0) planes.push(new THREE.Plane(new THREE.Vector3(0, 0, 1), -state.cutZ));
@@ -190,15 +217,16 @@ function applyClipping() {
 // ------------------------------------------------------------------ camera
 const VIEWS = {
   iso: { pos: [-24, 30, -30], tgt: [15, 5, 14] },
-  street: { pos: [15, 8.5, -34], tgt: [15, 6, 4] },
+  street: { pos: [15, 15, -31], tgt: [15, 6.5, 8] },
   plan: { pos: [15.1, 78, 18], tgt: [15, 0, 17.9] },
   basement: { pos: [-14, 24, -12], tgt: [15, 1.5, 13] },
   rear: { pos: [48, 26, 66], tgt: [15, 5, 22] },
   pools: { pos: [38, 13, 52], tgt: [14, 3.9, 32] },
+  road: { pos: [-10, 13, -24], tgt: [14, 1.2, -5] },
 };
 const STAGE_VIEW = {
-  est: 'iso', piles: 'iso', reroute: 'street', dig: 'basement', capping: 'basement', drain: 'basement',
-  tank: 'basement', slab: 'basement', ducts: 'street', ramps: 'basement', undercroft: 'basement', pools: 'rear',
+  est: 'iso', piles: 'iso', reroute: 'road', dig: 'basement', capping: 'basement', drain: 'basement',
+  tank: 'basement', slab: 'basement', ducts: 'road', ramps: 'basement', undercroft: 'basement', pools: 'rear',
   lg: 'iso', w1: 'iso', l1: 'iso', w2: 'iso', l2: 'iso', xmas: 'iso', roof: 'iso', membrane: 'street',
   joinery: 'street', facade: 'street', doors: 'street', services: 'iso', fitout: 'iso', strike: 'street', extslab: 'rear', extpool: 'pools', extdeck: 'rear', extfront: 'street', soft: 'rear', pc: 'iso',
 };
@@ -274,6 +302,7 @@ function renderStage(i) {
   $('#st-dates').textContent = `${fmtShort(toDate(s.start))} – ${fmt(toDate(s.end))}`;
   $('#st-ms').hidden = !s.milestone; $('#st-ms').textContent = s.milestone || '';
   $('#st-what').textContent = s.what;
+  $('#st-crane-wrap').hidden = !s.crane; $('#st-crane').textContent = s.crane || '';
   $('#st-qty').innerHTML = s.qty.map(q => `<li>${esc(q)}</li>`).join('');
   $('#st-holds').innerHTML = s.holds.map(q => `<li>${esc(q)}</li>`).join('');
   $('#st-plant').textContent = s.plant;
@@ -307,7 +336,10 @@ function updateReadout() {
   $('#week').textContent = `Week ${wk}`;
   scrub.value = state.t;
   scrub.style.setProperty('--p', `${(state.t / N) * 100}%`);
-  if (i !== lastStage) { lastStage = i; renderStage(i); }
+  if (i !== lastStage) {
+    if (state.playing && state.autoCam && lastStage >= 0) { goView(STAGE_VIEW[s.id]); stageCut(i); }
+    lastStage = i; renderStage(i);
+  }
   // flow-line house indicator
   if (s.flow) {
     const p = t - i;
@@ -318,7 +350,7 @@ function updateReadout() {
 function jumpTo(i, keepCam) {
   state.playing = false; syncPlay();
   state.t = Math.min(i + 0.999, N);
-  if (state.autoCam && !keepCam) goView(STAGE_VIEW[STAGES[i].id]);
+  if (state.autoCam && !keepCam) { goView(STAGE_VIEW[STAGES[i].id]); stageCut(i); }
   updateReadout();
 }
 // Next: play the following stage from its start. Previous: show the stage before, complete.
@@ -326,7 +358,7 @@ function step(dir) {
   const i = Math.min(Math.floor(state.t), N - 1);
   const target = i + dir;
   if (target < 0 || target >= N) return;
-  if (state.autoCam) goView(STAGE_VIEW[STAGES[target].id]);
+  if (state.autoCam) { goView(STAGE_VIEW[STAGES[target].id]); stageCut(target); }
   if (dir > 0) { state.t = target; state.playTo = target + 0.999; }
   else { state.t = target + 0.999; state.playTo = null; }
   updateReadout();
@@ -416,7 +448,7 @@ requestAnimationFrame(frame);
 let camStage = -1;
 function setT(t) {
   const i = Math.min(Math.floor(t), N - 1);
-  if (i !== camStage) { camStage = i; if (state.autoCam) goView(STAGE_VIEW[STAGES[i].id], true); }
+  if (i !== camStage) { camStage = i; if (state.autoCam) { goView(STAGE_VIEW[STAGES[i].id], true); stageCut(i); } }
   state.playing = false; state.playTo = null; state.t = t; updateReadout();
 }
-window.__gs = { state, goView, jumpTo, setT, N };
+window.__gs = { state, goView, jumpTo, setT, N, cam: ([p, t]) => { camTween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };
