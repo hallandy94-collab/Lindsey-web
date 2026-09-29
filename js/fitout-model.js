@@ -71,7 +71,7 @@ export function buildHouse(stageIndex) {
       s: stageIndex(o.stage), seq: o.seq ?? 0, anim: o.anim || 'drop',
       rs: o.rm ? stageIndex(o.rm) : null, rseq: o.rmSeq ?? 0, ranim: o.rmAnim || 'fade',
       temp: !!o.temp, level: o.level ?? null, glow: o.glow || null,
-      hideAfter: o.hideAfter ? stageIndex(o.hideAfter) : null, liftCar: !!o.liftCar, ceiling: !!o.ceiling,
+      hideAfter: o.hideAfter ? stageIndex(o.hideAfter) : null, liftCar: !!o.liftCar, ceiling: !!o.ceiling, variant: o.variant || null,
     };
     items.push(obj);
     return obj;
@@ -386,7 +386,23 @@ export function buildHouse(stageIndex) {
     glass.position.set(STAIR.x1 + 0.02, y0 + 3.23 / 2 + 0.6, (STAIR.z0 + STAIR.z1) / 2); glass.rotation.x = stringer.rotation.x; g.add(glass);
     const rail = new THREE.Mesh(boxGeo(0.05, 0.05, Math.hypot(STAIR.z1 - STAIR.z0, 3.23)), mat(COL.oakTread));
     rail.position.set(STAIR.x1 + 0.02, y0 + 3.23 / 2 + 1.12, (STAIR.z0 + STAIR.z1) / 2); rail.rotation.x = stringer.rotation.x; g.add(rail);
-    add(g, { stage: 'stair', seq: f, anim: 'rise', level: f });
+    add(g, { stage: 'stair', seq: f, anim: 'rise', level: f, variant: 'straight' });
+  }
+  // alternative: internal spiral stair in the same zone (switch in Display)
+  for (let f = 0; f < 2; f++) {
+    const y0 = LEVELS[f].y, n = 17, rise = 3.23 / n, cx = 1.1, cz = (STAIR.z0 + STAIR.z1) / 2, r = 0.9;
+    const g = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.23, 12), mat(0x2d2f33, { metalness: 0.5 }));
+    pole.position.set(cx, y0 + 3.23 / 2, cz); g.add(pole);
+    for (let i = 0; i < n; i++) {
+      const a = (f * n + i) * (Math.PI * 2 / 13);
+      const t = new THREE.Mesh(boxGeo(r, 0.05, 0.34), mat(COL.oakTread, { roughness: 0.5 }));
+      t.position.set(cx + Math.cos(a) * r / 2, y0 + (i + 1) * rise - 0.025, cz + Math.sin(a) * r / 2); t.rotation.y = -a;
+      g.add(t);
+      const post = new THREE.Mesh(boxGeo(0.02, 1.0, 0.02), mat(0x2d2f33)); post.position.set(cx + Math.cos(a) * (r - 0.03), y0 + (i + 1) * rise + 0.5, cz + Math.sin(a) * (r - 0.03)); g.add(post);
+      const rail = new THREE.Mesh(boxGeo(0.05, 0.05, 0.36), mat(COL.oakTread)); rail.position.set(cx + Math.cos(a) * (r - 0.03), y0 + (i + 1) * rise + 1.0, cz + Math.sin(a) * (r - 0.03)); rail.rotation.y = -a; g.add(rail);
+    }
+    add(g, { stage: 'stair', seq: f, anim: 'rise', level: f, variant: 'spiral' });
   }
 
   // lift car rides the shaft once installed

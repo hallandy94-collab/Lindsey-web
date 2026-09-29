@@ -57,7 +57,7 @@ windows('s', 'seq', 'd0', 'd1');
 windows('rs', 'rseq', 'rd0', 'rd1');
 
 // ------------------------------------------------------------------ state
-const state = { t: 0.999, house: 0, playing: false, playTo: null, speed: 1, ghost: true, highlight: true, cutaway: true, ceilings: true, labels: false, ctx: true, autoCam: true, level: 'all' };
+const state = { t: 0.999, house: 0, playing: false, playTo: null, speed: 1, ghost: true, highlight: true, cutaway: true, ceilings: true, stairType: 'straight', labels: false, ctx: true, autoCam: true, level: 'all' };
 const prog = (t, s, d0, d1) => { const a = t - s; return a <= d0 ? 0 : a >= d1 ? 1 : (a - d0) / (d1 - d0); };
 const ease = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 const accent = new THREE.Color();
@@ -79,7 +79,7 @@ function update(time) {
     const el = o.userData.el;
     const e = prog(t, el.s, el.d0, el.d1);
     const r = el.rs == null ? 0 : prog(t, el.rs, el.rd0, el.rd1);
-    const hidden = r >= 1 || (el.hideAfter != null && t >= el.hideAfter + 1);
+    const hidden = r >= 1 || (el.hideAfter != null && t >= el.hideAfter + 1) || (el.variant && el.variant !== state.stairType);
     if (hidden) { o.visible = false; continue; }
     o.position.copy(el.base.pos); o.scale.copy(el.base.scale);
     if (e <= 0) {
@@ -288,6 +288,7 @@ scrub.addEventListener('input', () => { state.t = +scrub.value; state.playing = 
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => goView(b.dataset.view)));
 const bind = (id, key, after) => { const el = document.getElementById(id); el.checked = state[key]; el.addEventListener('change', () => { state[key] = el.checked; after && after(); }); };
 bind('tg-ghost', 'ghost'); bind('tg-hl', 'highlight'); bind('tg-cut', 'cutaway'); bind('tg-lbl', 'labels'); bind('tg-ctx', 'ctx'); bind('tg-cam', 'autoCam'); bind('tg-ceil', 'ceilings');
+$('#stairtype').addEventListener('change', e => { state.stairType = e.target.value; });
 window.addEventListener('keydown', e => {
   if (e.target.closest('input, select, textarea')) return;
   if (e.key === ' ') { e.preventDefault(); $('#play').click(); }

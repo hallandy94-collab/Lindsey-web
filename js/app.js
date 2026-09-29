@@ -190,16 +190,17 @@ function applyClipping() {
 // ------------------------------------------------------------------ camera
 const VIEWS = {
   iso: { pos: [-24, 30, -30], tgt: [15, 5, 14] },
-  street: { pos: [15, 7.5, -30], tgt: [15, 7, 8] },
+  street: { pos: [15, 8.5, -34], tgt: [15, 6, 4] },
   plan: { pos: [15.1, 78, 18], tgt: [15, 0, 17.9] },
   basement: { pos: [-14, 24, -12], tgt: [15, 1.5, 13] },
   rear: { pos: [48, 26, 66], tgt: [15, 5, 22] },
+  pools: { pos: [38, 13, 52], tgt: [14, 3.9, 32] },
 };
 const STAGE_VIEW = {
   est: 'iso', piles: 'iso', reroute: 'street', dig: 'basement', capping: 'basement', drain: 'basement',
   tank: 'basement', slab: 'basement', ducts: 'street', ramps: 'basement', undercroft: 'basement', pools: 'rear',
   lg: 'iso', w1: 'iso', l1: 'iso', w2: 'iso', l2: 'iso', xmas: 'iso', roof: 'iso', membrane: 'street',
-  joinery: 'street', facade: 'street', doors: 'street', services: 'iso', fitout: 'iso', strike: 'street', external: 'rear', pc: 'iso',
+  joinery: 'street', facade: 'street', doors: 'street', services: 'iso', fitout: 'iso', strike: 'street', extslab: 'rear', extpool: 'pools', extdeck: 'rear', extfront: 'street', soft: 'rear', pc: 'iso',
 };
 let camTween = null;
 function goView(name, instant) {
