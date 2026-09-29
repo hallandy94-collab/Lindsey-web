@@ -11,7 +11,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const host = document.getElementById('viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !/[?&]rec\b/.test(location.search); // ?rec: faster frames for video capture
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
@@ -317,4 +317,11 @@ renderRegister();
 goView(FIT_STAGES[Math.floor(Math.min(state.t, N - 1))].view, true);
 updateReadout(); syncPlay();
 requestAnimationFrame(frame);
-window.__fo = { state, jumpTo, setHouse, goView };
+// frame-exact hook used to record the sequence as a video
+let camStage = -1;
+function setT(t) {
+  const i = Math.min(Math.floor(t), N - 1);
+  if (i !== camStage) { camStage = i; if (state.autoCam) goView(FIT_STAGES[i].view, true); }
+  state.playing = false; state.playTo = null; state.t = t; updateReadout();
+}
+window.__fo = { state, jumpTo, setHouse, goView, setT, N };
