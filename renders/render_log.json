@@ -18,5 +18,15 @@
   "seconds": 1554.8147494792938,
   "samples": 160,
   "res": "1920x1080"
+ },
+ "rear_evening": {
+  "seconds": 1176.9341497421265,
+  "samples": 160,
+  "res": "1920x1080"
+ },
+ "interior_living": {
+  "seconds": 2014.3870594501495,
+  "samples": 160,
+  "res": "1920x1080"
  }
 }
