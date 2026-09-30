@@ -13,7 +13,9 @@
 // fitout inside the houses is indicative.
 
 import * as THREE from 'three';
-import { rectMinus, STAIR_HOLE, BSTAIR_HOLE, LIFT } from './fitout-model.js';
+import { rectMinus, SLAB_HOLES, LIFT, LIFT_HOLE, FLIGHTS, FRONT_LG, PORCH } from './fitout-model.js';
+import * as MX from './machines.js';
+import { poolFurniture } from './furniture.js';
 
 export const DIM = {
   W: 44.6,           // grid 1 → 8 (basement / secant line)
@@ -129,7 +131,7 @@ export function buildModel(stageIndex) {
   staticBox(ground, X0, gb, D.BD, X1, D.GL, Z1, MAT.soil, soilM);                 // behind the basement
   staticBox(ground, X0, gb, 0, 0, D.GL, D.BD, MAT.soil, soilM);                    // north
   staticBox(ground, D.W, gb, 0, X1, D.GL, D.BD, MAT.soil, soilM);                  // south
-  staticBox(ground, X0, gb, Z0, X1, D.GL - 0.02, D.FB, MAT.soil, soilM);           // under the street
+  staticBox(ground, X0, gb, Z0, X1, D.GL - 0.1, D.FB, MAT.soil, soilM);            // under the street
   // front yard, cut by the two ramps
   staticBox(ground, X0, gb, D.FB, RAMPS[0][0], D.GL, 0, MAT.soil, soilM);
   staticBox(ground, RAMPS[0][1], gb, D.FB, RAMPS[1][0], D.GL, 0, MAT.soil, soilM);
@@ -168,20 +170,25 @@ export function buildModel(stageIndex) {
   neighbour(15, 25, 36, 46, 5.2, null);
   neighbour(31, 43, 35, 46, 5.2, null);
   // reserve trees
-  for (const [x, z] of [[-18, -26], [-8, -36], [40, -27], [52, -34], [-30, -30], [64, -27], [20, -40]]) tree(context, x, D.GL, z, 1.3);
+  for (const [x, z, k] of [[-18, -26, 1], [-8, -36, 2], [-30, -30, 5], [64, -27, 6], [70, -40, 7], [-26, -44, 8]]) { const t = MX.tree(1.5, k); t.position.set(x, D.GL, z); context.add(t); }
+  // cars parked along the far side of Goldie St
+  [[-20, 0x2c2f33], [-6, 0xe8e8e6], [9, 0x5a1f1f], [26, 0x8a9aa8, 'suv'], [41, 0x1f2f45], [58, 0xd0d2d4, 'suv']].forEach(([x, c, t]) => { const v = MX.car(c, t); v.position.set(x, D.GL - 0.04, ST.road + 1.2); context.add(v); });
   const lbl = makeFlatLabel('GOLDIE STREET', 1.6); lbl.position.set(22.3, D.GL - 0.02, -15.6); context.add(lbl);
   const lbl2 = makeFlatLabel('VELLENOWETH GREEN', 1.4); lbl2.position.set(22.3, D.GL + 0.06, -30); context.add(lbl2);
   const north = makeFlatLabel('← NORTH', 1.2); north.position.set(-6, D.GL - 0.02, -13.2); context.add(north);
 
+  let treeSeed = 20;
   function tree(parent, x, y, z, s) {
-    const g = new THREE.Group();
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.15 * s, 0.2 * s, 2.2 * s, 6), mat(MAT.trunk));
-    t.position.y = 1.1 * s; t.castShadow = true;
-    const c = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6 * s, 0), mat(MAT.tree, { flatShading: true }));
-    c.position.y = 3 * s; c.castShadow = true;
-    g.add(t, c); g.position.set(x, y, z); parent.add(g);
+    const g = MX.tree(s * 1.1, treeSeed++);
+    g.position.set(x, y, z); parent.add(g);
     return g;
   }
+  // site crew in hi-vis for a stage: [x, y, z, facing, pose]
+  const crew = (stage, list) => list.forEach(([x, y, z, r = 0, pose = 0], i) => {
+    const w = MX.worker(i % 3 === 2 ? 0xff7a1a : 0xf6d31c, i % 4 === 3 ? 0x2f6fd0 : 0xf5f5f2, pose);
+    w.position.set(x, y, z); w.rotation.y = r;
+    add(w, { stage, seq: 0, anim: 'fade', rm: stage, rmSeq: 99, temp: true });
+  });
 
   // ------------------------------------------------------------- 1 establishment
   const fenceH = 1.8;
@@ -191,8 +198,13 @@ export function buildModel(stageIndex) {
   fenceRun(RAMPS[0][1] + 0.3, D.FB, RAMPS[1][0] - 0.3, D.FB);
   fenceRun(D.SX0, D.FB, D.SX0, D.RB); fenceRun(D.SX1, D.FB, D.SX1, D.RB); fenceRun(D.SX0, D.RB, D.SX1, D.RB);
   // site office & amenities: two-storey cabins in the north end of the works zone
-  for (let i = 0; i < 3; i++) box(-12.4 + i * 2.6, D.GL, ST.bay + 0.4, -10 + i * 2.6, D.GL + 2.7, ST.berm - 0.4, MAT.office, { stage: 'est', seq: 1, rm: 'extfront', rmSeq: 7, temp: true });
-  box(-12.4, D.GL + 2.7, ST.bay + 0.4, -7.4, D.GL + 5.3, ST.berm - 0.4, MAT.office, { stage: 'est', seq: 2, rm: 'extfront', rmSeq: 7, temp: true });
+  for (const [x, y, sq] of [[-12.6, D.GL, 1], [-12.6, D.GL + 2.85, 2]]) {
+    const c = MX.siteCabin(6, 2.4, 2.7); c.position.set(x, y, ST.bay + 0.9); c.rotation.y = 0;
+    add(c, { stage: 'est', seq: sq, rm: 'extfront', rmSeq: 7, temp: true });
+  }
+  { const st = new THREE.Group(); const sm = new THREE.MeshStandardMaterial({ color: 0x8a9096, metalness: 0.7, roughness: 0.4 });
+    for (let k = 0; k < 13; k++) { const t = new THREE.Mesh(boxGeo(1.0, 0.04, 0.26), sm); t.position.set(-6.1 - k * 0.22, D.GL + 0.22 * (k + 1), ST.bay + 0.6); st.add(t); }
+    add(st, { stage: 'est', seq: 2, rm: 'extfront', rmSeq: 7, temp: true }); }
   // wheel-wash at the north exit
   box(RAMPS[0][0], D.GL, D.FB - 1.4, RAMPS[0][1], D.GL + 0.25, D.FB + 1.2, 0x6f7b85, { stage: 'est', seq: 2, rm: 'ramps', temp: true });
   // silt fence along the frontage
@@ -207,20 +219,16 @@ export function buildModel(stageIndex) {
   // barriers along the carriageway edge of the bays, with openings for trucks to pull in
   for (let x = WZ0; x < WZ1; x += 1.9) {
     if ((x > 8 && x < 14.5) || (x > 27 && x < 33)) continue;
-    const b = new THREE.Group();
-    const body = new THREE.Mesh(boxGeo(1.8, 0.8, 0.4), mat((Math.round((x - WZ0) / 1.9) % 2) ? 0xf2f2ee : 0xe8591a, { roughness: 0.6 }));
-    body.position.set(x + 0.9, D.GL + 0.4, ST.bay - 0.05); b.add(body);
+    const b = MX.waterBarrier((Math.round((x - WZ0) / 1.9) % 2) ? 0xf2f2ee : 0xe8591a);
+    b.position.set(x + 0.95, D.GL, ST.bay - 0.05);
     add(b, { stage: 'est', seq: 4, anim: 'rise', rm: 'extfront', rmSeq: 8, temp: true });
   }
-  for (const x of [WZ0, WZ1]) box(x - 0.2, D.GL, ST.bay, x + 0.2, D.GL + 0.8, ST.berm - 0.2, 0xe8591a, { stage: 'est', seq: 4, anim: 'rise', rm: 'extfront', rmSeq: 8, temp: true });
+  for (const x of [WZ0, WZ1]) for (const z of [ST.bay + 1, ST.bay + 3]) { const b = MX.waterBarrier(0xe8591a); b.rotation.y = Math.PI / 2; b.position.set(x, D.GL, z); add(b, { stage: 'est', seq: 4, anim: 'rise', rm: 'extfront', rmSeq: 8, temp: true }); }
   { const w = makeFlatLabel('WORKS ZONE · TMP', 0.9); w.position.set(36, D.GL + 0.03, ST.bay + 0.8);
     add(w, { stage: 'est', seq: 4, anim: 'fade', rm: 'extfront', rmSeq: 8, temp: true }); }
   // skips in the bays: muck/demo skip early, fitout skips later
   const skip = (x, color, o) => {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(boxGeo(2.0, 1.3, 3.8), mat(color, { roughness: 0.7, metalness: 0.3 })); body.position.set(x, D.GL + 0.65, CZ);
-    const load = new THREE.Mesh(boxGeo(1.8, 0.2, 3.5), mat(0x8a8176, { roughness: 1 })); load.position.set(x, D.GL + 1.2, CZ);
-    g.add(body, load);
+    const g = MX.skipBin(color); g.rotation.y = Math.PI / 2; g.position.set(x, D.GL, CZ);
     return add(g, o);
   };
   skip(-4.5, 0xd9a21b, { stage: 'est', seq: 5, anim: 'drop', rm: 'roof', rmSeq: 5, temp: true });
@@ -239,22 +247,15 @@ export function buildModel(stageIndex) {
     add(f, { stage: 'lg', seq: -1, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true }); }
   // lane closure for the HPMV standing in the traffic lane while its load is lifted
   for (let x = 2; x < 26; x += 2.5) {
-    const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 8), mat(0xff6a13)); c.position.set(x, D.GL + 0.3, LANE - 2.2);
+    const c = MX.cone(); c.position.set(x, D.GL - 0.05, LANE - 2.2);
     add(c, { stage: 'lg', seq: -1, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true });
   }
   // HPMV precast delivery parked in the traffic lane during the panel & plank windows
-  const hpmv = new THREE.Group();
-  { const cab = new THREE.Mesh(boxGeo(2.6, 3.0, 2.5), mat(0xc0392b)); cab.position.set(-0.2, 1.8, 0);
-    const deckT = new THREE.Mesh(boxGeo(13, 0.3, 2.5), mat(0x2d3034)); deckT.position.set(7.6, 1.2, 0);
-    const a1 = new THREE.Mesh(boxGeo(0.3, 2.8, 2.2), mat(0x2d3034)); a1.position.set(7.6, 2.7, 0); a1.rotation.z = 0.08;
-    hpmv.add(cab, deckT, a1);
-    for (let k = 0; k < 3; k++) { const p = new THREE.Mesh(boxGeo(7.4, 0.2, 2.4), mat(0xc8c4ba)); p.position.set(9, 1.45 + k * 0.22, 0); hpmv.add(p); }
-    for (const x of [-0.8, 5.2, 11.2, 12.4]) for (const z of [-1.1, 1.1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.35, 14), mat(0x1c1c1c)); w.rotation.x = Math.PI / 2; w.position.set(x, 0.5, z); hpmv.add(w); }
-    hpmv.traverse(c => { if (c.isMesh) c.castShadow = true; }); }
-  hpmv.position.set(8, D.GL - 0.04, LANE);
+  const hpmv = MX.hpmv('planks');
+  hpmv.position.set(22, D.GL - 0.04, LANE);
   add(hpmv, { stage: 'lg', seq: 0, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true });
   // fitout / facade delivery truck at the unloading bay
-  const deliv = makeTruck(0xf0f2f4); deliv.position.set(11.5, D.GL, CZ);
+  const deliv = MX.deliveryTruck(0xf0f2f4); deliv.position.set(11.5, D.GL, CZ);
   add(deliv, { stage: 'joinery', seq: 0, anim: 'fade', rm: 'fitout', rmSeq: 100, temp: true });
 
   // ------------------------------------------------------------- 2 secant piles
@@ -281,12 +282,7 @@ export function buildModel(stageIndex) {
       { stage: 'piles', seq: primary ? i : i + 0.5 + pilePts.length, anim: 'bore' }, 10);
   });
   // piling rig travels the wall line
-  const rig = new THREE.Group();
-  { const body = new THREE.Mesh(boxGeo(4, 1.6, 3), mat(MAT.crane)); body.position.y = 1.1;
-    const tr = new THREE.Mesh(boxGeo(4.6, 0.7, 3.6), mat(0x2b2d31)); tr.position.y = 0.35;
-    const mast = new THREE.Mesh(boxGeo(0.5, 16, 0.5), mat(MAT.crane)); mast.position.set(-2.2, 8.5, 0);
-    const kelly = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 12, 8), mat(0x444)); kelly.position.set(-2.6, 7, 0);
-    [body, tr, mast, kelly].forEach(p => { p.castShadow = true; rig.add(p); }); }
+  const rig = MX.pilingRig();
   rig.position.set(0, D.GL + 0.3, 0);
   add(rig, { stage: 'piles', seq: 0, anim: 'fade', rm: 'piles', rmSeq: 99, temp: true });
   rig.userData.el.rigPath = pilePts;
@@ -295,11 +291,13 @@ export function buildModel(stageIndex) {
   const pzW = (ST.berm + ST.fp) / 2, pzS = ST.berm - 1.2, py = D.GL - 1.8;
   pipe([-12, py, pzW], [33, py, pzW], 0.09, MAT.ww, { stage: 'reroute', seq: 0, anim: 'fade' });
   pipe([-8, py + 0.3, pzS], [27, py + 0.3, pzS], 0.12, MAT.sw, { stage: 'reroute', seq: 1, anim: 'fade' });
-  for (const [x, z, c] of [[-10, pzW, MAT.ww], [15, pzW, MAT.ww], [24, pzS, MAT.sw]])
-    cyl(x, py - 0.3, z, 0.55, D.GL - py + 0.35, c, { stage: 'reroute', seq: 2, anim: 'rise' }, 16);
+  for (const [x, z, c] of [[-10, pzW, MAT.ww], [15, pzW, MAT.ww], [24, pzS, MAT.sw]]) {
+    cyl(x, py - 0.3, z, 0.55, D.GL - py + 0.3, c, { stage: 'reroute', seq: 2, anim: 'rise' }, 16);
+    cyl(x, D.GL, z, 0.33, 0.035, 0x2e3033, { stage: 'reroute', seq: 2.5, anim: 'fade' }, 24);   // cast-iron lid
+  }
   for (let x = -10; x < 36; x += 3) {
-    const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 8), mat(0xff6a13));
-    c.position.set(x, D.GL + 0.35, ST.bay + 0.3);
+    const c = MX.cone();
+    c.position.set(x, D.GL, ST.bay + 0.3);
     add(c, { stage: 'reroute', seq: 0, anim: 'fade', rm: 'reroute', rmSeq: 99, temp: true });
   }
 
@@ -314,25 +312,12 @@ export function buildModel(stageIndex) {
       box(x0, y0, 0.3, x1, y1, D.BD - 0.3, MAT.soil, { stage: 'est', seq: -1, anim: 'none', rm: 'dig', rmSeq: li * NB + order, rmAnim: 'dig', soil: true }, { roughness: 1 });
     }
   });
-  const excavator = new THREE.Group();
-  { const t = new THREE.Mesh(boxGeo(3.2, 0.8, 2.6), mat(0x2b2d31)); t.position.y = 0.4;
-    const b = new THREE.Mesh(boxGeo(2.6, 1.4, 2.2), mat(MAT.crane)); b.position.y = 1.5;
-    const arm = new THREE.Mesh(boxGeo(5, 0.35, 0.35), mat(MAT.crane)); arm.position.set(3, 2.4, 0); arm.rotation.z = -0.35;
-    [t, b, arm].forEach(p => { p.castShadow = true; excavator.add(p); }); }
+  const excavator = MX.excavator();
   excavator.position.set(22, D.FORM, 13);
   add(excavator, { stage: 'dig', seq: 0, anim: 'fade', rm: 'drain', rmSeq: 0, temp: true });
-  const truck = makeTruck(MAT.truck); truck.position.set(8, D.GL - 0.04, LANE);
+  const truck = MX.tipTruck(0xf1f2f0); truck.position.set(8, D.GL - 0.04, LANE);
   add(truck, { stage: 'dig', seq: 0, anim: 'fade', rm: 'dig', rmSeq: 99, temp: true });
   truck.userData.el.drive = true;
-
-  function makeTruck(color) {
-    const g = new THREE.Group();
-    const cab = new THREE.Mesh(boxGeo(2.4, 2.6, 2.3), mat(color)); cab.position.set(3.6, 1.6, 0);
-    const bed = new THREE.Mesh(boxGeo(5.4, 1.6, 2.4), mat(0x6c757d)); bed.position.set(0, 1.7, 0);
-    const ch = new THREE.Mesh(boxGeo(7.6, 0.4, 2.2), mat(0x222)); ch.position.set(0.9, 0.6, 0);
-    [cab, bed, ch].forEach(p => { p.castShadow = true; g.add(p); });
-    return g;
-  }
 
   // ------------------------------------------------------------- 5 capping beam & shotcrete
   const cb = [D.GL - 0.35, D.GL + 0.1];
@@ -378,7 +363,7 @@ export function buildModel(stageIndex) {
   const slabB = D.FORM + 0.31;
   for (let i = 0; i <= 5; i++) box(HX(i) - 0.35, slabB - 0.35, 0.6, HX(i) + 0.35, slabB, D.BD - 0.6, MAT.insitu, { stage: 'slab', seq: 0, anim: 'rise' });
   for (let h = 0; h < 5; h++) {
-    const [a, b, c, d] = inHouse(h, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, LIFT.x1 + 0.15, LIFT.z1 + 0.15]);
+    const [a, b, c, d] = inHouse(h, LIFT_HOLE);
     box(a, slabB - 1.1, b, c, D.L0, d, MAT.insitu, { stage: 'slab', seq: 1, anim: 'rise' });
   }
   // 4 pours (AD-10: Pour 1 grid 1–3, Pours 2 + 3 grid 3–5, Pour 4 grid 5–8), less the ramps
@@ -390,18 +375,9 @@ export function buildModel(stageIndex) {
   const pump = makePump(); pump.position.set(22.3, D.GL, CZ);
   add(pump, { stage: 'slab', seq: 2, anim: 'fade', rm: 'ramps', rmSeq: 99, temp: true });
 
-  function makePump() {
-    const g = makeTruck(0xe0e3e6);
-    const pts = [[1, 3.2, 0], [1, 12, 8], [1, 10, 17], [1, 3, 21]];
-    for (let k = 0; k < pts.length - 1; k++) {
-      const a = new THREE.Vector3(...pts[k]), b = new THREE.Vector3(...pts[k + 1]);
-      const seg = new THREE.Mesh(boxGeo(0.35, 0.35, a.distanceTo(b)), mat(k === 2 ? 0x333333 : 0xd23c2a));
-      seg.position.copy(a).add(b).multiplyScalar(0.5);
-      seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize());
-      seg.castShadow = true; g.add(seg);
-    }
-    return g;
-  }
+  function makePump() { return MX.boomPump(21); }
+  // agitator trucks queue in the bays behind the pump
+  { const ag = MX.agitator(); ag.position.set(33, D.GL, CZ); add(ag, { stage: 'slab', seq: 2, anim: 'fade', rm: 'slab', rmSeq: 99, temp: true }); }
 
   // ------------------------------------------------------------- 9 incoming ducts (AD-06: trench near grid 6)
   const dcY = D.GL - 0.9;
@@ -457,15 +433,13 @@ export function buildModel(stageIndex) {
     box(fi, D.L0, D.RAMP_Z1, fi + t, top, D.BD - fi, col, { stage: 'undercroft', seq: 48, anim: 'rise' });
     box(FM0, D.L0, fi, FM1, top, fi + t, col, { stage: 'undercroft', seq: 48, anim: 'rise' }); }
   // precast basement stair flights, one per house, along the south party wall (L0 at z 7.8 → LG at z 3.3)
-  for (let h = 0; h < 5; h++) {
-    const [a, , c] = inHouse(h, BSTAIR_HOLE);
-    slope(a + 0.03, c - 0.03, BSTAIR_HOLE[1], D.LG, 7.8, D.L0, 0.25, MAT.precast, { stage: 'undercroft', seq: 50 + h });
-  }
+  const FB0 = FLIGHTS[0];
+  for (let h = 0; h < 5; h++) slope(HF(h) + FB0.x0 + 0.03, HF(h) + FB0.x1 - 0.03, FB0.zTop, D.LG, FB0.zBot, D.L0, 0.25, MAT.precast, { stage: 'undercroft', seq: 50 + h });
   // 55 t AT drives down the SOUTH (entry) ramp onto the L0 slab (mats), stands in the aisle and
   // erects the undercroft panels from the north end first, retreating south and backing out up the ramp
-  const crane55a = makeCrane(0.75, 12); crane55a.position.set(8, D.L0, 14);
+  const crane55a = makeCrane(0.75, 12, 3.2); crane55a.position.set(8, D.L0, 13.6);
   add(crane55a, { stage: 'undercroft', seq: 0, anim: 'fade', rm: 'undercroft', rmSeq: 99, temp: true });
-  crane55a.userData.el.setups = { undercroft: [[8, 14], [15, 14], [22.3, 14], [29.6, 14], [36.5, 14], [42.5, 8]] };
+  crane55a.userData.el.setups = { undercroft: [[8, 13.6], [15, 13.6], [22.3, 13.6], [29.6, 13.6], [36.5, 13.6], [42.5, 8]] };
   crane55a.userData.el.slew = [22.3, 5];
 
   // ------------------------------------------------------------- 12 pools
@@ -487,7 +461,7 @@ export function buildModel(stageIndex) {
     add(g, { stage: 'pools', seq: h * 2 + 1 });
   }
   // ~15 t shells lifted from the Goldie St bays at ~32 m radius, over the open basement
-  const crane130a = makeCrane(1, 32); crane130a.position.set(13, D.GL, CZ);
+  const crane130a = makeCrane(1, 32, 6); crane130a.position.set(13, D.GL, CZ);
   add(crane130a, { stage: 'pools', seq: 0, anim: 'fade', rm: 'pools', rmSeq: 99, temp: true });
   crane130a.userData.el.setups = { pools: [[13, CZ], [31.6, CZ]] };
   crane130a.userData.el.slew = [22.3, 23];
@@ -510,9 +484,10 @@ export function buildModel(stageIndex) {
     for (const [a, b, c, d] of rectMinus(rect, holes))
       box(a, y, b, c, y + D.TOP, d, 0xb4b1a9, { stage, seq, anim: 'rise' }, { roughness: 0.5 });
   };
-  const LIFTS = [0, 1, 2, 3, 4].map(h => inHouse(h, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, LIFT.x1 + 0.15, LIFT.z1 + 0.15]));
-  const SPIRALS = [0, 1, 2, 3, 4].map(h => inHouse(h, STAIR_HOLE));
-  const BSTAIRS = [0, 1, 2, 3, 4].map(h => inHouse(h, BSTAIR_HOLE));
+  const LIFTS = [0, 1, 2, 3, 4].map(h => inHouse(h, LIFT_HOLE));
+  const BSTAIRS = [0, 1, 2, 3, 4].map(h => inHouse(h, SLAB_HOLES.LG));
+  const L1HOLES = [0, 1, 2, 3, 4].map(h => inHouse(h, SLAB_HOLES.L1));
+  const L2HOLES = [0, 1, 2, 3, 4].map(h => inHouse(h, SLAB_HOLES.L2));
   const POOLS = [0, 1, 2, 3, 4].map(POOL);
   const LG_AREAS = [
     ...[0, 1, 2, 3, 4].map(h => [HX(h), 0, HX(h + 1), D.BD]),           // houses + podium, bay by bay
@@ -529,7 +504,7 @@ export function buildModel(stageIndex) {
     box(a, lgSoffit, D.RAMP_Z1 - 0.2, b, D.LG + 0.1, D.RAMP_Z1, MAT.insitu, { stage: 'lg', seq: nLG + 3, anim: 'rise' });
   // 130 t AT works only from the Goldie St bays, relocating along the frontage so it is
   // never stood on (or trapped by) the deck: set-ups in front of Houses 1–2, House 3 and Houses 4–5
-  const crane130b = makeCrane(1, 30); crane130b.position.set(10, D.GL, CZ);
+  const crane130b = makeCrane(1, 30, 12); crane130b.position.set(10, D.GL, CZ);
   add(crane130b, { stage: 'lg', seq: 0, anim: 'fade', rm: 'l2', rmSeq: 99, temp: true });
   const SET3 = [[10, CZ], [22.3, CZ], [34.6, CZ]];
   crane130b.userData.el.setups = { lg: SET3, w1: SET3, l1: SET3, w2: SET3, l2: SET3 };
@@ -550,22 +525,23 @@ export function buildModel(stageIndex) {
 
   // ------------------------------------------------------------- 15 L1 planks, balconies, topping
   const HOUSE_RECTS = [0, 1, 2, 3, 4].map(h => [HX(h), 0, HX(h + 1), D.HD1]);
-  const UP_HOLES = [...LIFTS, ...SPIRALS];
+  const UP_HOLES = [...LIFTS, ...L1HOLES, ...L2HOLES];
+  const L1_HOLES = [...LIFTS, ...L1HOLES], L2_HOLES = [...LIFTS, ...L2HOLES];
   const l1S = D.L1 - D.TOP - D.PLANK;
-  props(D.LG, l1S, HX(0), 0, HX(5), D.HD1, 'l1', 'roof', 0, (x, z) => UP_HOLES.some(p => inside(x, z, p, 0.3)));
+  props(D.LG, l1S, HX(0), 0, HX(5), D.HD1, 'l1', 'roof', 0, (x, z) => L1_HOLES.some(p => inside(x, z, p, 0.3)));
   let nL1 = 1;
-  HOUSE_RECTS.forEach(r => { nL1 += planksIn(l1S, r, 'l1', nL1, UP_HOLES); });
-  HOUSE_RECTS.forEach(r => toppingIn(l1S + D.PLANK, r, 'l1', nL1 + 8, UP_HOLES));
+  HOUSE_RECTS.forEach(r => { nL1 += planksIn(l1S, r, 'l1', nL1, L1_HOLES); });
+  HOUSE_RECTS.forEach(r => toppingIn(l1S + D.PLANK, r, 'l1', nL1 + 8, L1_HOLES));
   for (let h = 0; h < 5; h++) box(HX(h) + 0.6, D.L1 - 0.25, -1.8, HX(h + 1) - 0.6, D.L1, 0, MAT.precast, { stage: 'l1', seq: nL1 + 2 + h });
 
   partyWalls(D.L1, D.L2 - D.TOP - D.PLANK, D.HD1, 'w2', 0, true);
 
   // ------------------------------------------------------------- 17 L2 (floor runs to grid C; the rear 3.7 m is the roof terrace)
   const l2S = D.L2 - D.TOP - D.PLANK;
-  props(D.L1, l2S, HX(0), 0, HX(5), D.HD1, 'l2', 'roof', 0, (x, z) => UP_HOLES.some(p => inside(x, z, p, 0.3)));
+  props(D.L1, l2S, HX(0), 0, HX(5), D.HD1, 'l2', 'roof', 0, (x, z) => L2_HOLES.some(p => inside(x, z, p, 0.3)));
   let nL2 = 1;
-  HOUSE_RECTS.forEach(r => { nL2 += planksIn(l2S, r, 'l2', nL2, UP_HOLES); });
-  HOUSE_RECTS.forEach(r => toppingIn(l2S + D.PLANK, r, 'l2', nL2 + 8, UP_HOLES));
+  HOUSE_RECTS.forEach(r => { nL2 += planksIn(l2S, r, 'l2', nL2, L2_HOLES); });
+  HOUSE_RECTS.forEach(r => toppingIn(l2S + D.PLANK, r, 'l2', nL2 + 8, L2_HOLES));
   for (let h = 0; h < 5; h++) box(HX(h) + 0.6, D.L2 - 0.25, -1.8, HX(h + 1) - 0.6, D.L2, 0, MAT.precast, { stage: 'l2', seq: nL2 + 2 + h });
 
   // ------------------------------------------------------------- 19 steel, L2 framing, roof
@@ -583,7 +559,7 @@ export function buildModel(stageIndex) {
   box(BX0, D.ROOF - 0.05, 0, BX1, D.ROOF, D.HD2, MAT.ply, { stage: 'roof', seq: 30 });
   box(BX0, D.ROOF, -0.05, BX1, D.ROOF + 0.6, 0.15, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
   box(BX0, D.ROOF, D.HD2 - 0.15, BX1, D.ROOF + 0.6, D.HD2 + 0.05, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
-  const hiab = makeCrane(0.6, 18); hiab.position.set(22.3, D.GL, CZ);
+  const hiab = makeCrane(0.6, 18, 15); hiab.position.set(22.3, D.GL, CZ);
   add(hiab, { stage: 'roof', seq: 0, anim: 'fade', rm: 'roof', rmSeq: 99, temp: true });
   hiab.userData.el.setups = { roof: [[12, CZ], [22.3, CZ], [32.6, CZ]] };
   hiab.userData.el.slew = [22.3, 7];
@@ -637,13 +613,13 @@ export function buildModel(stageIndex) {
   // membrane roof + L2 roof terraces
   box(BX0 + 0.1, D.ROOF, 0.15, BX1 - 0.1, D.ROOF + 0.04, D.HD2 - 0.15, MAT.roofMem, { stage: 'membrane', seq: 4, anim: 'fade' }, { roughness: 0.6 });
   box(BX0 + 0.1, D.L2, D.HD2, BX1 - 0.1, D.L2 + 0.03, D.HD1, MAT.roofMem, { stage: 'membrane', seq: 5, anim: 'fade' }, { roughness: 0.6 });
-  box(BX0 - 0.05, D.ROOF + 0.6, -0.1, BX1 + 0.05, D.ROOF + 0.66, 0.2, 0x8a9096, { stage: 'membrane', seq: 6 });
-  box(BX0 - 0.05, D.ROOF + 0.6, D.HD2 - 0.2, BX1 + 0.05, D.ROOF + 0.66, D.HD2 + 0.1, 0x8a9096, { stage: 'membrane', seq: 6 });
+  box(BX0 - 0.05, D.ROOF + 0.68, -0.16, BX1 + 0.05, D.ROOF + 0.72, 0.2, 0x8a9096, { stage: 'membrane', seq: 6 });
+  box(BX0 - 0.05, D.ROOF + 0.68, D.HD2 - 0.2, BX1 + 0.05, D.ROOF + 0.72, D.HD2 + 0.16, 0x8a9096, { stage: 'membrane', seq: 6 });
 
   // ------------------------------------------------------------- 21 joinery
   const glassM = { transparent: true, opacity: 0.45, roughness: 0.1, metalness: 0.3 };
-  const joinery = (h, y0, y1, z, seq) => {
-    const x0 = HX(h) + 0.5, x1 = HX(h + 1) - 0.5;
+  const joinery = (h, y0, y1, z, seq, xs) => {
+    const x0 = xs ?? HX(h) + 0.5, x1 = HX(h + 1) - 0.5;
     const g = new THREE.Group();
     const gl = new THREE.Mesh(boxGeo(x1 - x0, y1 - y0, 0.03), mat(MAT.glass, glassM)); gl.position.set((x0 + x1) / 2, (y0 + y1) / 2, z);
     g.add(gl);
@@ -654,7 +630,7 @@ export function buildModel(stageIndex) {
     add(g, { stage: 'joinery', seq, anim: 'fade', house: h });
   };
   for (let h = 0; h < 5; h++) {
-    joinery(h, D.LG + 0.05, D.L1 - 0.45, 0.02, h);
+    joinery(h, D.LG + 0.05, D.L1 - 0.45, FRONT_LG + 0.02, h, HF(h) + PORCH[2]);
     joinery(h, D.L1 + 0.05, D.L2 - 0.45, 0.02, h + 5);
     joinery(h, D.L2 + 0.05, D.ROOF - 0.4, 0.2, h + 10);
     joinery(h, D.LG + 0.05, D.L1 - 0.45, D.HD1 - 0.02, h + 15);
@@ -670,8 +646,8 @@ export function buildModel(stageIndex) {
       box(x0, y0, D.HD1 - 0.02, x1, y1, D.HD1 + 0.1, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
     }
     box(x0 + 0.05, D.LG, -0.35, x0 + 0.5, D.L2 + 0.05, 0.02, MAT.grc, { stage: 'facade', seq: 5 + h, house: h, anim: 'rise' });
-    box(x0, D.ROOF - 0.4, 0.1, x1, D.ROOF + 0.6, 0.2, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
-    box(x0, D.ROOF - 0.4, D.HD2 - 0.2, x1, D.ROOF + 0.6, D.HD2 - 0.1, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
+    box(x0, D.ROOF - 0.4, -0.13, x1, D.ROOF + 0.68, -0.07, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
+    box(x0, D.ROOF - 0.4, D.HD2 + 0.07, x1, D.ROOF + 0.68, D.HD2 + 0.13, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
     box(x0, D.GL - 0.1, -0.1, x1, D.LG + 0.05, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });  // LG plinth
   }
   // end walls rendered to the side yards: down to the ramp over grid G–E, down to the deck behind
@@ -698,7 +674,7 @@ export function buildModel(stageIndex) {
     box(a, D.L0, b, c, D.ROOF - 0.4, d, MAT.lift, { stage: 'services', seq: h * 3 + 2, house: h, anim: 'rise' }, { transparent: true, opacity: 0.7, metalness: 0.4 });
     for (const y of [D.L1 - 0.6, D.L2 - 0.6, D.ROOF - 0.7])
       box(HF(h) + 2.55, y, 1, HF(h) + 3.05, y + 0.3, D.HD2 - 1.5, MAT.duct2, { stage: 'services', seq: h * 3, house: h, anim: 'fade' });
-    cyl(HF(h) + 5.6, D.L0, 7.85, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
+    cyl(HF(h) + 5.9, D.L0, 11.95, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
     // HWCs in the basement, in front of the garage
     for (const dx of [0, 0.8]) cyl(HF(h) + 1.0 + dx, D.L0, 1.1, 0.33, 1.8, 0xe8e8e8, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 14);
   }
@@ -713,9 +689,9 @@ export function buildModel(stageIndex) {
       box(x0, y, 4.35, x1, top, 4.45, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
       box(x0 + 3.25, y, 4.4, x0 + 3.35, top, 8.0, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
       box(x0 + 3.3, y, 7.95, x1, top, 8.05, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
-      for (const [a, b, c, d] of rectMinus([x0 + 0.02, 0.2, x1 - 0.02, depth - 0.2], y === D.LG ? [BSTAIRS[h], LIFTS[h]] : [SPIRALS[h], LIFTS[h]]))
+      for (const [a, b, c, d] of rectMinus([x0 + 0.02, y === D.LG ? FRONT_LG + 0.1 : 0.2, x1 - 0.02, depth - 0.2], y === D.LG ? [BSTAIRS[h], LIFTS[h]] : y === D.L1 ? [L1HOLES[h], LIFTS[h]] : [L2HOLES[h], LIFTS[h]]))
         box(a, y + 0.001, b, c, y + 0.03, d, 0xb88a57, { stage: 'fitout', seq: h * 4 + 3, house: h, anim: 'fade' });
-      if (y === D.LG) box(x0 + 2.6, y, 9.3, x0 + 4.6, y + 0.9, 11.7, 0x3c3f44, { stage: 'fitout', seq: h * 4 + 2, house: h });
+      if (y === D.L1) box(x0 + 2.6, y, 13.4, x0 + 4.9, y + 0.9, 15.6, 0x3c3f44, { stage: 'fitout', seq: h * 4 + 2, house: h });
     }
   }
 
@@ -726,17 +702,9 @@ export function buildModel(stageIndex) {
     slab: 0xcfccc4, block: 0xc7c1b4, coping: 0xebe6db, tile: 0xd9d3c7, deck: 0x8c7660, soil: 0x4e3b2a,
     pebble: 0xbab6ad, nuwall: 0x3f454b, alu: 0x9aa1a8, shrub: 0x5d8a45, fill: 0xa39c90,
   };
-  const slatTex = (() => {
-    const c = document.createElement('canvas'); c.width = 64; c.height = 8; const g = c.getContext('2d');
-    g.fillStyle = '#6e5a46'; g.fillRect(0, 0, 64, 8);
-    for (let i = 0; i < 4; i++) { g.fillStyle = '#9c8166'; g.fillRect(i * 16, 0, 12, 8); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  })();
   const slatFence = (x0, z0, x1, z1, y0, h, o) => {
     const len = Math.hypot(x1 - x0, z1 - z0), alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
-    const t = slatTex.clone(); t.needsUpdate = true; t.repeat.set(len / 0.36, 1);
-    const m = new THREE.Mesh(boxGeo(alongX ? len : 0.04, h, alongX ? 0.04 : len), mat(0xffffff, { map: t, roughness: 0.9 }));
+    const m = new THREE.Mesh(boxGeo(alongX ? len : 0.04, h, alongX ? 0.04 : len), mat(0x9c6b3f, { roughness: 0.9 }));
     m.position.set((x0 + x1) / 2, y0 + h / 2, (z0 + z1) / 2);
     return add(m, o);
   };
@@ -806,6 +774,7 @@ export function buildModel(stageIndex) {
       const bbq = new THREE.Mesh(boxGeo(0.5, 0.12, 0.8), mat(0x9aa1a8, { metalness: 0.8, roughness: 0.3 })); bbq.position.set(x0 + 0.5, PY + 1.06, TZ0 + 0.8);
       ok.add(cab, top, bbq); }
     add(ok, { stage: 'extdeck', seq: 1 + h * 0.01, house: h });
+    { const pf = new THREE.Group(); poolFurniture(pf, x0, PY, pz1 - 0.1); add(pf, { stage: 'extdeck', seq: 1.5 + h * 0.01, anim: 'fade', house: h }); }
     // external spiral stair, LG terrace → L2 roof terrace (By Owner)
     const sp = new THREE.Group();
     { const sx = x1 - 1.1, sz = TZ0 + 1.0, rise2 = D.L2 - D.LG, n = 30;
@@ -894,6 +863,35 @@ export function buildModel(stageIndex) {
     add(t, { stage: 'soft', seq: 5, anim: 'grow' });
   }
 
+  // ------------------------------------------------------------- site crews by stage
+  const { GL, FORM, L0, LG, L1, L2, ROOF } = D, TK = FORM + 0.31;
+  crew('est', [[-3, GL, -3.5, 1], [2, GL, -1.8, 0, 1], [10, GL, 3, 2]]);
+  crew('piles', [[6, GL + 0.3, 2.5, 0.5], [8, GL + 0.3, 1.8, 2, 2], [-2, GL, -6, 1]]);
+  crew('reroute', [[5, GL, ST.fp - 0.4, 0, 2], [12, GL, ST.fp - 0.2, 1], [20, GL, ST.bay + 1.2, 3]]);
+  crew('dig', [[12, FORM, 8, 1], [30, FORM, 6, 2, 1]]);
+  crew('capping', [[1.4, FORM, 12, 0], [43, FORM, 16, 3, 2]]);
+  crew('drain', [[10, FORM, 5, 0, 2], [20, FORM, 20, 1]]);
+  crew('tank', [[8, TK, 6, 0, 2], [16, TK, 10, 1], [30, TK, 18, 2, 2], [38, TK, 8, 3]]);
+  crew('slab', [[12, L0, 8, 0, 2], [14, L0, 9, 1], [26, L0, 12, 2], [28, L0, 13, 0, 2], [20, L0, 20, 1]]);
+  crew('ducts', [[32, GL, -3, 0, 2], [34, GL, ST.fp - 0.4, 1]]);
+  crew('ramps', [[2, L0 + 0.6, 8, 0], [42.5, L0 + 0.6, 8, 2, 2]]);
+  crew('undercroft', [[6, L0, 12, 0], [18, L0, 12.2, 1], [11, L0, 5, 0, 2], [30, L0, 12.4, 2]]);
+  crew('pools', [[7, L0, 20.6, 0], [25, L0, 20.8, 0, 2], [13, GL, ST.fp - 0.6, 1]]);
+  crew('lg', [[8, LG, 5, 0], [15, LG, 9, 1, 2], [30, LG, 6, 2], [36, LG, 12, 3], [22, GL, ST.fp - 0.6, 0]]);
+  crew('w1', [[6, LG, 3, 0], [18, LG, 10, 1], [33, LG, 14, 0, 1]]);
+  crew('l1', [[10, L1, 6, 0, 2], [26, L1, 8, 1], [34, L1, 12, 2]]);
+  crew('w2', [[9, L1, 4, 0], [24, L1, 11, 1]]);
+  crew('l2', [[12, L2, 6, 0], [28, L2, 9, 0, 2], [37, L2, 5, 2]]);
+  crew('roof', [[10, ROOF, 5, 0], [20, ROOF, 9, 0, 2], [34, ROOF, 7, 1]]);
+  crew('membrane', [[15, ROOF + 0.04, 6, 0, 2], [30, ROOF + 0.04, 10, 1]]);
+  crew('joinery', [[12, GL, -1.5, 0], [27, GL, -1.2, 0, 1]]);
+  crew('facade', [[9, GL + 5.97, -0.95, 0], [30, GL + 7.97, -0.95, 0, 2]]);
+  crew('extslab', [[10, LG, 22, 0, 2], [26, LG, 24, 1]]);
+  crew('extpool', [[15, LG, 20.4, 0], [34, LG, 20.6, 2, 2]]);
+  crew('extdeck', [[20, LG, 25.3, 0, 2]]);
+  crew('extfront', [[5, GL, ST.fp + 0.6, 0, 2], [40, GL, ST.berm - 1, 1], [22, GL, -2.1, 0]]);
+  crew('soft', [[12, LG, 25.8, 0, 2], [8, GL, -1.3, 0, 2]]);
+
   // ------------------------------------------------------------- 28 PC – house number plates
   for (let h = 0; h < 5; h++) {
     const l = makeLabel(`House ${h + 1}`, 1.1);
@@ -904,33 +902,8 @@ export function buildModel(stageIndex) {
 
   // ------------------------------------------------------------- helpers
   // s = size, reach = working radius shown on the ground (m)
-  function makeCrane(s, reach = 16) {
-    const g = new THREE.Group();
-    const carrier = new THREE.Mesh(boxGeo(10 * s, 1.6 * s, 2.8 * s), mat(MAT.crane)); carrier.position.y = 1.4 * s;
-    const cab = new THREE.Mesh(boxGeo(2 * s, 1.6 * s, 2.4 * s), mat(0x2d3136)); cab.position.set(3.8 * s, 2.9 * s, 0);
-    const slew = new THREE.Group(); slew.position.y = 2.4 * s;
-    const house = new THREE.Mesh(boxGeo(3.4 * s, 1.6 * s, 2.4 * s), mat(MAT.crane)); house.position.set(-1 * s, 0.8 * s, 0);
-    const luff = 0.8, boomLen = reach / Math.cos(luff);
-    const boom = new THREE.Mesh(boxGeo(0.6 * s, 0.6 * s, boomLen), mat(MAT.crane));
-    boom.geometry = boom.geometry.clone(); boom.geometry.translate(0, 0, boomLen / 2);
-    boom.position.set(0, 1.4 * s, 0); boom.rotation.x = -luff;
-    const tipY = 1.4 * s + Math.sin(luff) * boomLen, hookLen = Math.max(4, tipY - 6);
-    const hook = new THREE.Mesh(boxGeo(0.05, hookLen, 0.05), mat(0x222)); hook.position.set(0, tipY - hookLen / 2, reach);
-    slew.add(house, boom, hook);
-    // outriggers
-    for (const [x, z] of [[-4, 2.6], [-4, -2.6], [3, 2.6], [3, -2.6]]) {
-      const o = new THREE.Mesh(boxGeo(0.5 * s, 1.4 * s, 0.5 * s), mat(0x2d3136)); o.position.set(x * s, 0.7 * s, z * s); g.add(o);
-    }
-    [carrier, cab].forEach(p => g.add(p)); g.add(slew);
-    g.traverse(c => { if (c.isMesh) c.castShadow = true; });
-    g.userData.slewGroup = slew;
-    slew.rotation.y = 0;
-    // working radius ring and tail-swing exclusion zone, drawn on the standing level
-    const ring = new THREE.Mesh(new THREE.RingGeometry(reach - 0.15, reach + 0.15, 96), new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
-    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; g.add(ring);
-    const excl = new THREE.Mesh(new THREE.CircleGeometry(6 * s, 48), new THREE.MeshBasicMaterial({ color: 0xd62828, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
-    excl.rotation.x = -Math.PI / 2; excl.position.y = 0.05; g.add(excl);
-    return g;
+  function makeCrane(s, reach = 16, hookY = 9) {
+    return MX.mobileCrane({ axles: s >= 1 ? 5 : s >= 0.7 ? 3 : 2, reach, hookY, luff: s >= 1 ? 0.95 : 0.8 });
   }
 
   return { root, items, context, ground };
@@ -949,6 +922,7 @@ export function makeFlatLabel(text, size = 1.5) {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(size * w / c.height, size), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
   m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI; // readable from the street side looking east
+  m.scale.x = -1; // the scene is mirrored to true handedness (see MIRROR in the apps)
   return m;
 }
 

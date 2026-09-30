@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goldie Street GLB Export</title>
+<style>
+:root { --bg: #f4f5f3; --ink: #16202a; --muted: #5a6672; --accent: #1f5fbf; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0f151b; --ink: #e5eaee; --muted: #93a0ac; --accent: #6ea0ff; } }
+:root[data-theme="dark"] { --bg: #0f151b; --ink: #e5eaee; --muted: #93a0ac; --accent: #6ea0ff; }
+body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 640px; margin: 0 auto; }
+button { font: 600 15px system-ui; padding: 10px 18px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
+p { color: var(--muted); }
+</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<main>
+  <h1>Goldie Street – completed model (.glb)</h1>
+  <p>This exports the finished project as one binary glTF file: the building set out to HAL AD-06/10/11, all five houses fitted out and furnished, and the street and suburb. It is in metres, Y up, with materials named by surface (concrete, oak, glass, water, render and so on). Open it in Blender, Twinmotion, Lumion, D5 Render, Enscape or SketchUp.</p>
+  <button id="go" type="button">Build &amp; download .glb</button>
+</main>
+<script type="module" src="../js/export-glb.js"></script>
+</body>
+</html>

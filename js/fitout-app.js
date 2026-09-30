@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { FIT_STAGES, PHASES, HOUSES, stageDates, houseSpan } from './fitout-stages.js';
 import { buildHouse, LEVELS, W, ROOF_Y, makeLabel } from './fitout-model.js';
+import { realify, setupWorld } from './realism.js';
 
 const N = FIT_STAGES.length;
 const stageIndex = id => { const i = FIT_STAGES.findIndex(s => s.id === id); if (i < 0) throw new Error('stage ' + id); return i; };
@@ -11,14 +12,14 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const host = document.getElementById('viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = !/[?&]rec\b/.test(location.search); // ?rec: faster frames for video capture
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 300);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.minDistance = 2; controls.maxDistance = 80;
-scene.add(new THREE.HemisphereLight(0xf6f8fb, 0x6a6155, 1.35));
+const hemi = new THREE.HemisphereLight(0xf6f8fb, 0x6a6155, 1.35); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff3e0, 1.9);
 sun.position.set(-18, 30, -8); sun.target.position.set(3, 3, 11);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
@@ -28,7 +29,15 @@ scene.add(sun, sun.target);
 const warm = new THREE.PointLight(0xffd9a0, 0, 30); warm.position.set(W / 2, 5, 9); scene.add(warm);
 
 const { root, items, nearWall, context, labels, shell } = buildHouse(stageIndex);
-scene.add(root);
+// set out like the drawings; mirrored in x for true handedness (north party wall on the left from the street)
+const MIRROR = new THREE.Group(); MIRROR.scale.x = -1; MIRROR.add(root); scene.add(MIRROR);
+const toW = a => [-a[0], a[1], a[2]];
+realify(root);
+const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-3.6, 0, 11), suburb: false, shadowSize: 2048, shadowExtent: 26 });
+{ // ground at the street level around the house (LG is 0.86 m above the street)
+  const g = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.MeshStandardMaterial({ color: 0x9fb088, roughness: 1 }));
+  g.rotation.x = -Math.PI / 2; g.position.y = -0.9; g.receiveShadow = true; scene.add(g);
+}
 const roof = shell.getObjectByName('roof');
 
 const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.18, depthWrite: false });
@@ -141,9 +150,9 @@ const VIEWS = {
   iso: { pos: [-15, 13.5, -6], tgt: [3.6, 3.6, 9], xpos: [3, 45, -19], xtgt: [12.5, 0.5, 9] },
   side: { pos: [-21, 5.2, 9], tgt: [3.6, 4.6, 9] },
   rear: { pos: [14, 9.5, 31], tgt: [3.6, 4, 12], xpos: [27, 25, 35], xtgt: [12.5, 2, 10] },
-  LG: { pos: [3.6, 31, 9.2], tgt: [3.6, 0, 9], level: 'LG' },
-  L1: { pos: [3.6, 34, 9.2], tgt: [3.6, 3.23, 9], level: 'L1' },
-  L2: { pos: [3.6, 35, 7.3], tgt: [3.6, 6.46, 7.1], level: 'L2' },
+  LG: { pos: [3.6, 42, 9.2], tgt: [3.6, 0, 9], level: 'LG' },
+  L1: { pos: [3.6, 45, 9.2], tgt: [3.6, 3.23, 9], level: 'L1' },
+  L2: { pos: [3.6, 47, 7.3], tgt: [3.6, 6.46, 7.1], level: 'L2' },
 };
 let tween = null, explodeTarget = 1, currentView = 'iso';
 function goView(name, instant) {
@@ -153,7 +162,7 @@ function goView(name, instant) {
   state.level = v.level || 'all'; applyClip();
   const ex = state.exploded && !v.level && name !== 'side';
   explodeTarget = ex ? 1 : 0;
-  const to = { pos: new THREE.Vector3(...(ex && v.xpos ? v.xpos : v.pos)), tgt: new THREE.Vector3(...(ex && v.xtgt ? v.xtgt : v.tgt)) };
+  const to = { pos: new THREE.Vector3(...toW(ex && v.xpos ? v.xpos : v.pos)), tgt: new THREE.Vector3(...toW(ex && v.xtgt ? v.xtgt : v.tgt)) };
   if (instant || reduceMotion) { camera.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); tween = null; return; }
   tween = { from: { pos: camera.position.clone(), tgt: controls.target.clone() }, to, t0: performance.now(), dur: 1000 };
 }
@@ -161,7 +170,6 @@ controls.addEventListener('start', () => { tween = null; });
 
 function readTokens() {
   const cs = getComputedStyle(document.documentElement);
-  scene.background = new THREE.Color(cs.getPropertyValue('--sky').trim() || '#dde5ea');
   accent.set(cs.getPropertyValue('--accent').trim() || '#1f5fbf');
   ghostMat.color.set(cs.getPropertyValue('--ghost').trim() || '#33414f');
 }
@@ -330,7 +338,7 @@ function frame(now) {
   if (tween) { const k = ease(Math.min(1, (now - tween.t0) / tween.dur)); camera.position.lerpVectors(tween.from.pos, tween.to.pos, k); controls.target.lerpVectors(tween.from.tgt, tween.to.tgt, k); if (k >= 1) tween = null; }
   explodeAmt += (explodeTarget - explodeAmt) * (reduceMotion ? 1 : Math.min(1, dt * 4));
   if (Math.abs(explodeTarget - explodeAmt) < 0.001) explodeAmt = explodeTarget;
-  controls.update(); update(now); renderer.render(scene, camera);
+  controls.update(); update(now); world.tick(now); renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 

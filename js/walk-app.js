@@ -5,81 +5,78 @@
 
 import * as THREE from 'three';
 import { STAGES } from './stages.js';
-import { buildModel, DIM as D } from './model.js';
+import { buildModel, DIM as D, houseX } from './model.js';
 import { FIT_STAGES } from './fitout-stages.js';
 import { buildHouse } from './fitout-model.js';
 import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
+import { realify, setupWorld } from './realism.js';
+import { furnishHouse } from './furniture.js';
+import * as MX from './machines.js';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const REC = /[?&]rec\b/.test(location.search);
 const EYE = 1.6;
-const HOUSE = 1;                          // House 2 (0-based) is the fitted-out one
-const HOUSE_W = D.W / 5;
-const HX = HOUSE_W * HOUSE + 0.075;       // clear face of House 2's north party wall
+const HOUSE = 1;                          // House 2 (0-based) is the one we walk through
+const HX = houseX(HOUSE) + 0.075;         // clear face of House 2's north party wall
 // house-local coords → building coords (y relative to LG FFL)
 const H = (x, y, z) => [HX + x, D.LG + y, z];
+// building coords are set out like the drawings; the scene is mirrored in x for true handedness
+const toW = a => [-a[0], a[1], a[2]];
 
 // ------------------------------------------------------------------ scene
 const host = document.getElementById('viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(REC ? 1 : Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xcfdfe9);
-scene.fog = new THREE.Fog(0xcfdfe9, 90, 260);
-const camera = new THREE.PerspectiveCamera(68, 1, 0.05, 500);
-scene.add(new THREE.HemisphereLight(0xf7f9fc, 0x6f665a, 1.35));
-scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-const sun = new THREE.DirectionalLight(0xfff2de, 1.5);
-sun.position.set(-30, 60, -18); scene.add(sun);
+const camera = new THREE.PerspectiveCamera(68, 1, 0.05, 2400);
+const hemi = new THREE.HemisphereLight(0xf7f9fc, 0x6f665a, 1.0); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2de, 3); sun.castShadow = true; scene.add(sun, sun.target);
+const MIRROR = new THREE.Group(); MIRROR.scale.x = -1; scene.add(MIRROR);
 
 // whole building, as completed
 const bIndex = id => STAGES.findIndex(s => s.id === id);
 const bld = buildModel(bIndex);
-scene.add(bld.root);
-const hideInHouse2 = new Set(['fitout', 'services', 'roof']);
+MIRROR.add(bld.root);
 for (const o of bld.items) {
   const el = o.userData.el;
   const sid = STAGES[el.s].id;
-  o.visible = !(el.temp || el.rs != null || o.isSprite || (el.house === HOUSE && hideInHouse2.has(sid)));
+  // every house is fitted out below, so hide the building model's simplified fitout, services and roof framing
+  o.visible = !(el.temp || el.rs != null || o.isSprite || sid === 'fitout' || sid === 'services' || (sid === 'roof' && el.house != null));
 }
 
-// House 2 interior, completed
+// all five houses, completed and furnished (House 2 is the one on the tour)
 const fIndex = id => FIT_STAGES.findIndex(s => s.id === id);
-const house = buildHouse(fIndex);
-house.root.position.set(HX, D.LG, 0);
-scene.add(house.root);
-house.shell.visible = false; house.nearWall.visible = false; house.context.visible = false; house.labels.visible = false;
-// services rough-in and insulation are hidden behind the finished linings
-const hiddenFit = new Set(['plumb', 'elec', 'ufh', 'insul']);
-for (const o of house.items) {
-  const el = o.userData.el;
-  o.visible = !(el.temp || el.hideAfter != null || (el.variant && el.variant !== 'spiral') || o.isSprite || hiddenFit.has(FIT_STAGES[el.s].id));
-  if (el.glow === 'comm') o.traverse(c => { if (c.material?.emissive) { c.material.emissive.set(0xffd98a); c.material.emissiveIntensity = 1.1; } });
-  if (o.userData.flame) { o.userData.flame.material.emissiveIntensity = 1.8; }
+const hiddenFit = new Set(['plumb', 'elec', 'ufh', 'insul', 'hvac', 'frame', 'preline']);
+const houses = [];
+for (let h = 0; h < 5; h++) {
+  const house = buildHouse(fIndex);
+  house.root.position.set(houseX(h) + 0.075, D.LG, 0);
+  MIRROR.add(house.root);
+  house.shell.visible = false; house.nearWall.visible = false; house.context.visible = false; house.labels.visible = false;
+  for (const o of house.items) {
+    const el = o.userData.el;
+    o.visible = !(el.temp || el.hideAfter != null || o.isSprite || hiddenFit.has(FIT_STAGES[el.s].id));
+    if (el.glow === 'comm') o.traverse(c => { if (c.material?.emissive) { c.material.emissive.set(0xffd98a); c.material.emissiveIntensity = 1.1; } });
+    if (o.userData.flame) { o.userData.flame.material.emissiveIntensity = 1.8; }
+  }
+  furnishHouse(house.root, h);
+  houses.push(house);
 }
+const house = houses[HOUSE];
 // warm interior light in the living area and the basement lobby
 // labels and street lettering are for the construction viewers, not the walkthrough
 scene.traverse(o => { if (o.isSprite || (o.isMesh && o.material?.map && o.material.isMeshBasicMaterial)) o.visible = false; });
 
-// a few parked cars in the basement, and a car on Goldie Street
-function car(x, y, z, rot, color) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 4.4), new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.35 }));
-  body.position.y = 0.55;
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.55, 2.3), new THREE.MeshStandardMaterial({ color: 0x223040, metalness: 0.3, roughness: 0.15 }));
-  cabin.position.set(0, 1.15, -0.2);
-  g.add(body, cabin);
-  for (const [dx, dz] of [[-0.85, 1.4], [0.85, 1.4], [-0.85, -1.4], [0.85, -1.4]]) {
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 16), new THREE.MeshStandardMaterial({ color: 0x1b1b1b }));
-    w.rotation.z = Math.PI / 2; w.position.set(dx, 0.33, dz); g.add(w);
-  }
-  g.position.set(x, y, z); g.rotation.y = rot; scene.add(g);
-  return g;
-}
-car(8, D.L0, 6.5, 0, 0x8a9aa8); car(11, D.L0, 6.5, 0, 0x2c2f33); car(17, D.L0, 7, 0.05, 0xe8e8e6); car(23, D.L0, 6.5, 0, 0x5a1f1f);
-car(20.5, D.GL, -5.5, 0, 0x33485e);
+// cars: in the garages (nose to the street), in the aisle, and in the drive-in bays on Goldie St
+const carAt = (x, y, z, rot, color, type) => { const c = MX.car(color, type); c.position.set(x, y, z); c.rotation.y = rot; MIRROR.add(c); return c; };
+[[0, 0x8a9aa8, 'suv'], [0, 0x2c2f33], [1, 0xe8e8e6, 'suv'], [1, 0x1f2f45], [2, 0x5a1f1f], [3, 0xd0d2d4, 'suv'], [4, 0x3b4046], [4, 0xb9b2a4, 'suv']]
+  .forEach(([h, c, t], i) => carAt(houseX(h) + (i % 2 ? 3.9 : 1.6), D.L0, 7.6, Math.PI / 2, c, t));
+carAt(30, D.GL, -7.7, -Math.PI / 2, 0x33485e, 'suv'); carAt(7.5, D.GL, -7.7, -Math.PI / 2, 0xe8e8e6);
+realify(MIRROR);
+const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 70 });
 
 // ------------------------------------------------------------------ collision (walk mode)
 // Door leaves, the LG front/rear sliders of House 2 and the vehicle/carpark doors are
@@ -90,12 +87,12 @@ for (const o of bld.items) {
   if (!o.visible) continue;
   const sid = STAGES[o.userData.el.s].id;
   bb.setFromObject(o);
-  if (sid === 'joinery' && o.userData.el.house === HOUSE && bb.min.y < D.L1 && (bb.max.z < 1 || bb.min.z > D.HD1 - 1)) noCollide.add(o);
+  if (sid === 'joinery' && o.userData.el.house === HOUSE && bb.min.y < D.L1 && (bb.max.z < 1.5 || bb.min.z > D.HD1 - 1)) noCollide.add(o);
   if (sid === 'joinery' && o.userData.el.house === HOUSE && bb.min.y > D.L2 - 0.2 && bb.min.z > D.HD2 - 1) noCollide.add(o);
   if (sid === 'doors' && bb.min.y < D.LG) noCollide.add(o);
   if (sid === 'extfront' && bb.max.y - bb.min.y > 1 && bb.max.y - bb.min.y < 1.8 && bb.max.z < 0) noCollide.add(o); // gates
 }
-for (const o of house.items) if (FIT_STAGES[o.userData.el.s].id === 'doors') noCollide.add(o);
+for (const hs of houses) for (const o of hs.items) if (FIT_STAGES[o.userData.el.s].id === 'doors') noCollide.add(o);
 const colliders = [];
 scene.updateMatrixWorld(true);
 scene.traverse(o => {
@@ -109,23 +106,30 @@ scene.traverse(o => {
 // Merge everything static into a few meshes per material so the walkthrough renders
 // quickly on phones. The original meshes stay (hidden) for collision rays.
 const moving = new Set();
-house.items.forEach(o => { if (o.userData.el.liftCar || o.userData.flame) o.traverse(c => moving.add(c)); });
+houses.forEach(hs => hs.items.forEach(o => { if (o.userData.el.liftCar || o.userData.flame) o.traverse(c => moving.add(c)); }));
 const groups = new Map();
 scene.traverse(o => {
   if (!o.isMesh || o.isSprite || moving.has(o)) return;
   for (let p = o; p; p = p.parent) if (!p.visible) return;
   const m = o.material;
-  const key = [m.type, m.color?.getHexString(), m.emissive?.getHexString(), m.emissiveIntensity, m.opacity, m.transparent, m.roughness, m.metalness, m.map?.uuid, m.side, m.flatShading].join('|');
+  const key = [m.type, m.name, m.color?.getHexString(), m.emissive?.getHexString(), m.emissiveIntensity, m.opacity, m.transparent, m.roughness, m.metalness, m.map?.uuid, m.bumpMap?.uuid, m.normalMap?.uuid, m.side, m.flatShading].join('|');
   if (!groups.has(key)) groups.set(key, { m, list: [] });
   groups.get(key).list.push(o);
 });
 const merged = new THREE.Group(); scene.add(merged);
 for (const { m, list } of groups.values()) {
   if (list.length < 2) continue;
-  const geos = list.map(o => { let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); g.applyMatrix4(o.matrixWorld); for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k); if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); return g; });
+  const geos = list.map(o => {
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); g.applyMatrix4(o.matrixWorld);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    // a mirrored transform turns the triangles inside out: restore the winding
+    if (o.matrixWorld.determinant() < 0) for (const a of Object.values(g.attributes)) { const n = a.itemSize, v = a.array; for (let t = 0; t < a.count; t += 3) for (let c = 0; c < n; c++) { const i1 = (t + 1) * n + c, i2 = (t + 2) * n + c, tmp = v[i1]; v[i1] = v[i2]; v[i2] = tmp; } }
+    return g;
+  });
   const g = mergeGeometries(geos, false);
   if (!g) continue;
-  merged.add(new THREE.Mesh(g, m));
+  const mm = new THREE.Mesh(g, m); mm.castShadow = mm.receiveShadow = !m.transparent; merged.add(mm);
   for (const o of list) o.visible = false;
 }
 const ray = new THREE.Raycaster();
@@ -139,23 +143,22 @@ function hitDist(origin, dir, far, list) {
 // ------------------------------------------------------------------ tour
 // p0/l0 → p1/l1 over d seconds; cut = fade through black into this shot
 const SHOTS = [
-  { title: 'Goldie Street', text: 'Vellenoweth Green Residences: five terrace houses over a full basement carpark, with drive-in parking along the frontage. We walk through House 2.', p0: [-20, 10, -26], l0: [12, 7, 8], p1: [9.05, 5.35, -7.5], l1: [9.05, 7.4, 4], d: 10 },
-  { title: 'Front entry', text: 'Pedestrian gate and letterbox in the block front wall. Sto render with GRC fins, APL joinery and glass balustrades above.', p0: [9.05, 5.35, -7.5], l0: [9.05, 7.4, 4], p1: [9.05, 5.35, -1.4], l1: [9.05, 6.3, 6], d: 6 },
-  { title: 'Entry – LG', text: 'Engineered oak floor and Level 5 plasterboard against the exposed architectural concrete party wall. Powder room to the right.', p0: H(2.4, EYE, 0.7), l0: H(2.4, 1.4, 8), p1: H(2.3, EYE, 4.6), l1: H(1.6, 1.3, 12), d: 7, cut: true },
-  { title: 'Spiral stair', text: 'The internal spiral stair rises LG → L1 → L2: steel centre column, oak treads and a steel balustrade with an oak handrail.', p0: H(2.95, EYE, 8.3), l0: H(1.1, 1.7, 10.25), p1: H(2.95, EYE, 9.3), l1: H(1.1, 5.2, 10.25), d: 7 },
-  { title: 'Kitchen & scullery', text: 'Island with a sintered stone benchtop, Gaggenau ovens in the tall joinery and a scullery behind. Kitchens By Design, By Owner supply.', p0: H(1.0, EYE, 15.2), l0: H(3.2, 0.9, 12.2), p1: H(1.3, EYE, 16.0), l1: H(4.9, 1.0, 13), d: 7 },
-  { title: 'Living & dining', text: 'Escea gas fire, underfloor heating and full-height APL sliders opening to the terrace and pool.', p0: H(3.0, EYE, 16.4), l0: H(0.6, 1.0, 19.6), p1: H(3.1, EYE, 18.2), l1: H(3.0, 1.3, 26), d: 8 },
-  { title: 'LG terrace', text: 'Porcelain on the concrete terrace and an outdoor kitchen. Block walls with steps down to the pool garden.', p0: [9.05, D.LG + EYE, 22.9], l0: [9.05, D.LG - 0.4, 32], p1: [8.0, D.LG + EYE, 25.1], l1: [9.4, D.GL - 0.2, 33], d: 6, cut: true },
-  { title: 'Pool', text: 'Precast shell with a fibreglass lining and stone coping. Frameless glass pool barrier to NZBC F9 with a self-closing, self-latching gate.', p0: [6.95, D.GL + 0.2 + EYE, 29.0], l0: [9.8, D.GL - 0.1, 33.5], p1: [11.2, D.GL + 0.2 + EYE, 30.0], l1: [8.4, D.GL - 0.1, 34.2], d: 7 },
-  { title: 'Garden & rear elevation', text: 'Vitex deck, lawn, planting and garden lighting. The external spiral stair climbs to the L2 terrace.', p0: [9.05, D.GL + EYE, 43.2], l0: [9.05, 9, 15], p1: [12.3, D.GL + 2.6, 41.8], l1: [9.0, 10.2, 16], d: 7 },
-  { title: 'Basement carpark – L0', text: 'Power-floated slab over the fully tanked box. One-way ramps (in at the south, out at the north) with carpark extract overhead.', p0: [5, D.L0 + EYE, 1.8], l0: [15, D.L0 + 1.2, 12], p1: [12.5, D.L0 + EYE, 4.6], l1: [21, D.L0 + 1.2, 13.5], d: 8, cut: true },
-  { title: 'Undercroft below House 2', text: 'Undercroft below House 2: precast basement stair, carpark extract and the heat-pump hot water cylinders. Where the stair arrives in the house is to be confirmed on the HAL plans.', p0: [10.9, D.L0 + EYE, 13.4], l0: [7.44, D.L0 + 1.2, 21.5], p1: [10.6, D.L0 + EYE, 15.6], l1: [7.44, D.L0 + 2.4, 22.5], d: 6 },
-  { title: 'L1 – stair landing', text: 'Three bedrooms and two bathrooms off the landing. Wool carpet to the bedrooms, oak to the landing and stair.', p0: H(1.0, 3.23 + EYE, 16.2), l0: H(1.1, 3.9, 9), p1: H(1.2, 3.23 + EYE, 14.9), l1: H(2.2, 4.4, 8.2), d: 6, cut: true },
-  { title: 'Bedroom 4', text: 'Garden outlook through full-height joinery, wool carpet and a built-in robe.', p0: H(2.9, 3.23 + EYE, 17.9), l0: H(2.9, 3.23 + 0.9, 26), p1: H(3.6, 3.23 + EYE, 20.3), l1: H(2.0, 3.23 + 0.3, 30), d: 6 },
-  { title: 'L2 – master bedroom', text: 'Full-height glazing to the balcony with Vellenoweth Green beyond. Level 5 finish and wool carpet.', p0: H(3.0, 6.46 + EYE, 6.2), l0: H(3.0, 6.46 + 1.2, -3), p1: H(4.2, 6.46 + EYE, 4.4), l1: H(1.4, 6.46 + 1.0, -4), d: 7, cut: true },
-  { title: 'Ensuite', text: 'Walk-in frameless shower, freestanding bath, twin vanities with sintered stone tops and under-tile heating.', p0: H(2.55, 6.46 + EYE, 13.45), l0: H(5.3, 6.46 + 0.7, 10.8), p1: H(2.95, 6.46 + EYE, 13.25), l1: H(4.3, 6.46 + 0.5, 10.4), d: 6 },
-  { title: 'L2 terrace', text: 'Outdoor porcelain on pedestals and the heat-pump outdoor unit, with the spiral stair down to the garden and pool.', p0: [7.4, D.L2 + 0.14 + EYE, 18.3], l0: [9.05, D.L2 - 1, 40], p1: [8.6, D.L2 + 0.14 + EYE, 21.0], l1: [9.05, D.GL, 40], d: 7, cut: true },
-  { title: 'Practical completion', text: 'Vellenoweth Green Residences, Houses 1–5. PC target Oct/Nov 2027.', p0: [9.05, D.L2 + EYE, -1.2], l0: [9.05, D.L2 - 0.6, -25], p1: [-24, 27, -36], l1: [15, 7, 14], d: 10, cut: true },
+  { title: 'Goldie Street', text: 'Vellenoweth Green Residences: five terrace houses over a full basement carpark, set out to Hulena Architects AD-06/AD-11. Exit ramp at the north end, entry at the south. We walk through House 2.', p0: [-6, 12, -36], l0: [22, 7, 8], p1: [HX + 1.6, D.GL + EYE, -6.8], l1: [HX + 1.6, D.LG + 1.8, 4], d: 10 },
+  { title: 'Front garden & entry porch', text: 'Pedestrian gate in the block front wall, steps up to the recessed west terrace and the entry porch. Sto render, GRC fins, APL joinery and glass balustrades to the balconies above.', p0: [HX + 1.6, D.GL + EYE, -6.8], l0: [HX + 1.6, D.LG + 1.8, 4], p1: H(0.8, EYE, 0.4), l1: H(0.8, 1.3, 5), d: 7 },
+  { title: 'Entry & gallery – LG', text: 'The front door opens to the gallery: engineered oak, Level 5 plasterboard and the exposed architectural concrete party wall. Bed 4 / office to the right, bath 1 ahead.', p0: H(0.8, EYE, 3.7), l0: H(1.8, 1.4, 10), p1: H(2.4, EYE, 5.6), l1: H(2.6, 1.3, 12), d: 7, cut: true },
+  { title: 'Open stair', text: 'Oak treads on steel stringers with a frameless glass balustrade rise LG → L1 along the north wall. The basement stair and the lift sit on the south wall, per AD-11.', p0: H(3.0, EYE, 5.6), l0: H(0.7, 1.4, 8.6), p1: H(2.6, EYE, 6.6), l1: H(0.7, 3.8, 10.2), d: 7 },
+  { title: 'Media room', text: 'The media room at the rear of the LG opens through sliders to the east terrace and pool court. Bed 3 and the laundry are across the hall.', p0: H(3.0, EYE, 11.6), l0: H(1.2, 0.9, 15.5), p1: H(2.9, EYE, 12.3), l1: H(1.6, 1.0, 18.5), d: 7 },
+  { title: 'Bedroom 3', text: 'Wool carpet, garden outlook and a built-in robe on the party wall.', p0: H(4.3, EYE, 14.1), l0: H(6.8, 0.8, 15.9), p1: H(4.5, EYE, 14.5), l1: H(6.0, 1.0, 17.9), d: 6 },
+  { title: 'East terrace', text: 'Porcelain on the podium over the basement, the outdoor kitchen, and the external spiral stair up to the L2 roof terrace (By Owner).', p0: H(2.2, EYE, 17.0), l0: H(3.6, 0.4, 24), p1: H(2.6, EYE, 19.4), l1: H(5.5, 1.8, 18.9), d: 7, cut: true },
+  { title: 'Pool court', text: 'Precast 3 × 5 m shell with a fibreglass lining and stone coping, a Vitex deck, and a frameless glass barrier to NZBC F9 with a self-closing, self-latching gate.', p0: H(0.9, EYE, 20.5), l0: H(4.0, -0.3, 23.2), p1: H(0.7, EYE, 25.3), l1: H(3.6, 3.0, 15), d: 8 },
+  { title: 'Basement carpark – L0', text: 'Power-floated slab over the fully tanked box. One-way ramps (entry south, exit north), a double garage per house off the aisle, third spaces and storage behind.', p0: [HX + 3.2, D.L0 + EYE, 13.9], l0: [HX - 8, D.L0 + 1.2, 13.6], p1: [HX + 2.6, D.L0 + EYE, 12.6], l1: [HX + 2.7, D.L0 + 1.0, 5], d: 8, cut: true },
+  { title: 'Garage, stair & lift', text: 'From the garage, the precast stair rises along the south party wall to the LG gallery, beside the Powerglide lift. Heat-pump hot water cylinders are at the front of the garage.', p0: [HX + 4.9, D.L0 + EYE, 11.4], l0: [HX + 6.6, D.L0 + 1.0, 11.1], p1: [HX + 4.6, D.L0 + EYE, 10.2], l1: [HX + 6.6, D.L0 + 2.2, 6.2], d: 7 },
+  { title: 'L1 – living', text: 'The living level (layout indicative): Escea gas fire, underfloor heating and full-height joinery to the balcony, with Vellenoweth Green across the street.', p0: H(5.2, 3.23 + EYE, 5.0), l0: H(1.0, 3.23 + 1.0, 2.6), p1: H(5.3, 3.23 + EYE, 4.2), l1: H(3.4, 3.23 + 1.2, -6), d: 8, cut: true },
+  { title: 'Dining & kitchen', text: 'Island with a sintered stone benchtop, Gaggenau appliances and the kitchen opening to the garden side. Kitchens By Design, By Owner supply.', p0: H(3.2, 3.23 + EYE, 10.6), l0: H(3.6, 3.23 + 0.9, 14.6), p1: H(4.4, 3.23 + EYE, 11.0), l1: H(1.2, 3.23 + 1.2, 16.5), d: 8 },
+  { title: 'L2 – master bedroom', text: 'Full-height glazing to the balcony with Vellenoweth Green beyond. Level 5 finish, wool carpet and sheers.', p0: H(5.6, 6.46 + EYE, 4.1), l0: H(3.0, 6.46 + 1.2, -3), p1: H(4.9, 6.46 + EYE, 3.9), l1: H(1.0, 6.46 + 1.0, -4), d: 7, cut: true },
+  { title: 'Ensuite', text: 'Walk-in frameless shower, freestanding bath, twin vanities with sintered stone tops and under-tile heating.', p0: H(3.0, 6.46 + EYE, 6.2), l0: H(0.8, 6.46 + 0.8, 8.2), p1: H(3.0, 6.46 + EYE, 7.0), l1: H(1.4, 6.46 + 0.9, 4.8), d: 6 },
+  { title: 'L2 roof terrace', text: 'Outdoor porcelain on pedestals over the membrane roof, the heat-pump unit, and the spiral stair down to the terrace and pool court.', p0: H(2.4, 6.6 + EYE, 14.6), l0: H(3.6, 4.8, 26), p1: H(3.6, 6.6 + EYE, 16.9), l1: H(6.2, 3.8, 30), d: 7, cut: true },
+  { title: 'Practical completion', text: 'Vellenoweth Green Residences, Houses 1–5. PC target Oct/Nov 2027.', p0: H(3.6, 6.46 + EYE, 1.0), l0: [HX + 3.6, D.L2 - 0.6, -25], p1: [-26, 30, -46], l1: [22, 6, 12], d: 10, cut: true },
 ];
 let acc = 0; for (const s of SHOTS) { s.t0 = acc; acc += s.d; }
 const T = acc;
@@ -168,7 +171,7 @@ function shotAt(t) {
   t = Math.max(0, Math.min(T - 1e-4, t));
   let i = SHOTS.findIndex(s => t >= s.t0 && t < s.t0 + s.d); if (i < 0) i = SHOTS.length - 1;
   const s = SHOTS[i], k = easeIO((t - s.t0) / s.d);
-  const pos = v3(s.p0).lerp(v3(s.p1), k), look = v3(s.l0).lerp(v3(s.l1), k);
+  const pos = v3(toW(s.p0)).lerp(v3(toW(s.p1)), k), look = v3(toW(s.l0)).lerp(v3(toW(s.l1)), k);
   // fade through black around cuts
   let fade = 0;
   if (s.cut && t - s.t0 < FADE) fade = 1 - (t - s.t0) / FADE;
@@ -217,16 +220,16 @@ $('#progress').addEventListener('pointerdown', e => {
 // walk places
 const PLACES = {
   // yaw 0 faces the street (−z); π faces into the site (+z)
-  street: { p: [9.05, D.GL, -6.5], yaw: Math.PI },
-  basement: { p: [12, D.L0, 3], yaw: Math.PI - 0.3 },
-  lg: { p: H(2.4, 0, 1.2), yaw: Math.PI },
-  l1: { p: H(1.0, 3.23, 15.8), yaw: 0 },
-  l2: { p: H(3.0, 6.46, 5.5), yaw: 0 },
-  garden: { p: [9.05, D.GL, 42], yaw: 0 },
+  street: { p: [HX + 1.6, D.GL, -6.8], yaw: Math.PI },
+  basement: { p: [HX + 3.2, D.L0, 13.6], yaw: 0 },
+  lg: { p: H(0.8, 0, 3.8), yaw: Math.PI },
+  l1: { p: H(4.5, 3.23, 6.0), yaw: 0 },
+  l2: { p: H(4.8, 6.46, 3.9), yaw: 0 },
+  garden: { p: H(2.6, 0, 19.2), yaw: Math.PI },
 };
 function goPlace(name) {
   const pl = PLACES[name]; if (!pl) return;
-  walk.feet.set(...pl.p); walk.yaw = pl.yaw; walk.pitch = 0; walk.vy = 0;
+  walk.feet.set(...toW(pl.p)); walk.yaw = pl.yaw; walk.pitch = 0; walk.vy = 0;
   document.querySelectorAll('[data-place]').forEach(b => b.setAttribute('aria-pressed', b.dataset.place === name));
 }
 document.querySelectorAll('[data-place]').forEach(b => b.addEventListener('click', () => { setMode('walk'); goPlace(b.dataset.place); }));
@@ -342,6 +345,7 @@ function frame(now) {
     if (state.playing) { state.t += dt * state.speed; if (state.t >= T) { state.t = T - 0.001; state.playing = false; syncPlay(); } }
     applyTour();
   } else stepWalk(dt);
+  world.tick(now);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

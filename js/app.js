@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from '../vendor/OrbitControls.js';
 import { STAGES, PACKAGES, PROJECT } from './stages.js';
 import { buildModel, DIM } from './model.js';
+import { realify, setupWorld } from './realism.js';
 
 const N = STAGES.length;
 const stageIndex = id => {
@@ -15,7 +16,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const host = document.getElementById('viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = !/[?&]rec\b/.test(location.search); // ?rec: faster frames for video capture
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.localClippingEnabled = false;
 host.appendChild(renderer.domElement);
@@ -27,7 +28,7 @@ controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.495;
 controls.minDistance = 4; controls.maxDistance = 220;
 
-scene.add(new THREE.HemisphereLight(0xf4f7fb, 0x5a5146, 1.25));
+const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x5a5146, 1.25); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff4e2, 2.2);
 sun.position.set(-23, 60, -24); // afternoon sun from the north-west (southern hemisphere)
 sun.target.position.set(22, 0, 12);
@@ -38,7 +39,12 @@ sun.shadow.bias = -0.0006;
 scene.add(sun, sun.target);
 
 const { root, items, context, ground } = buildModel(stageIndex);
-scene.add(root);
+// The model is set out like the drawings (x = grid 1 → 8, z = street → rear). Mirroring x gives
+// true handedness, so north, the sun and the ramps sit where they really are.
+const MIRROR = new THREE.Group(); MIRROR.scale.x = -1; MIRROR.add(root); scene.add(MIRROR);
+const toW = a => [-a[0], a[1], a[2]];
+realify(root);
+const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 62 });
 
 // Per-item animation setup
 const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.11, depthWrite: false });
@@ -217,7 +223,7 @@ function applyClipping() {
 // ------------------------------------------------------------------ camera
 const VIEWS = {
   iso: { pos: [-33, 47, -47], tgt: [22, 4, 12] },
-  street: { pos: [22.3, 17, -55], tgt: [22.3, 7.5, 6] },
+  street: { pos: [22.3, 14, -46], tgt: [22.3, 7.5, 6] },
   plan: { pos: [22.4, 92, 12.6], tgt: [22.3, 0, 12.5] },
   basement: { pos: [-24, 38, -28], tgt: [22, 1.5, 12] },
   rear: { pos: [70, 44, 66], tgt: [22, 5, 14] },
@@ -234,7 +240,7 @@ let camTween = null;
 function goView(name, instant) {
   const v = VIEWS[name]; if (!v) return;
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === name));
-  const to = { pos: new THREE.Vector3(...v.pos), tgt: new THREE.Vector3(...v.tgt) };
+  const to = { pos: new THREE.Vector3(...toW(v.pos)), tgt: new THREE.Vector3(...toW(v.tgt)) };
   if (instant || reduceMotion) { camera.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); return; }
   camTween = { from: { pos: camera.position.clone(), tgt: controls.target.clone() }, to, t0: performance.now(), dur: 1100 };
 }
@@ -251,8 +257,6 @@ controls.addEventListener('start', () => { camTween = null; document.querySelect
 function readTokens() {
   const cs = getComputedStyle(document.documentElement);
   ghostMat.color.set(cs.getPropertyValue('--ghost').trim() || '#33414f');
-  scene.background = new THREE.Color(cs.getPropertyValue('--sky').trim() || '#dde5ea');
-  scene.fog = new THREE.Fog(scene.background, 120, 320);
   accentColor.set(cs.getPropertyValue('--accent').trim() || '#1f5fbf');
 }
 readTokens();
@@ -432,6 +436,7 @@ function frame(now) {
   tickCamera(now);
   controls.update();
   update(now);
+  world.tick(now);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

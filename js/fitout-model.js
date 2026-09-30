@@ -1,10 +1,11 @@
 // One Goldie Street terrace house (LG + L1 + L2), built for the fitout sequence.
 // Axes: x across the house between party walls (0 at the north party-wall face → W at
 // the south one), z from the street facade (0, grid G) to the rear (17.9, grid C), y from
-// LG FFL. Shell to HAL AD-06 / AD-10 Rev D: 7.4 m party-wall centres, 17.9 m LG / L1
-// plates, 14.2 m L2 plate (525 m² / 37 m) with a rear roof terrace, 3.23 m floor-to-floor,
-// basement stair and lift on the south party wall. Room layout inside is INDICATIVE
-// (HAL L1 / L2 plans not yet in the pack).
+// LG FFL. Shell to HAL AD-06 / AD-10 / AD-11 Rev D: 7.4 m party-wall centres, 17.9 m LG / L1
+// plates, 14.2 m L2 plate (525 m² / 37 m) with a rear roof terrace, 3.23 m floor-to-floor.
+// LG rooms follow AD-11: recessed west terrace (G–F), entry porch, bed 4 / office, gallery,
+// bath 1, coats, straight stair + lift on the south party wall, laundry, bed 3, media, east
+// terrace with the external spiral stair. L1 / L2 layouts are INDICATIVE (plans not in the pack).
 
 import * as THREE from 'three';
 
@@ -17,12 +18,21 @@ export const LEVELS = [
 ];
 export const ROOF_Y = 9.49;
 const CEIL = 2.7;                  // ceiling lining height above FFL
-export const LIFT = { x0: 5.9, x1: 7.1, z0: 8.2, z1: 9.9 };
-// 1.8 m spiral stair LG → L2 (centre x 1.2, z 5.5) and its slab opening
-export const SPIRAL = { cx: 1.2, cz: 5.5, r: 0.9 };
-export const STAIR_HOLE = [0.05, 4.4, 2.35, 6.6];
-// straight precast basement stair L0 → LG along the south party wall (top at z 3.3)
-export const BSTAIR_HOLE = [5.95, 3.3, W, 7.95];
+export const LIFT = { x0: 6.15, x1: 7.1, z0: 10.55, z1: 11.75 };
+export const FRONT_LG = 1.1;       // LG facade set back to grid F behind the west terrace
+export const PORCH = [0, 1.1, 1.6, 3.3];
+// straight stairs, stacked scissor-fashion on the south party wall, then across to the north wall
+export const FLIGHTS = [
+  { id: 'B', x0: 6.05, x1: 7.2, zBot: 5.3, zTop: 9.3, yBot: -2.79, yTop: 0, n: 13 },     // L0 → LG (precast, AD-10/11 south wall, lands by the lift)
+  { id: 'F1', x0: 0.15, x1: 1.25, zBot: 6.0, zTop: 10.3, yBot: 0, yTop: 3.23, n: 15 },   // LG → L1 (open stair in the gallery, north wall)
+  { id: 'F2', x0: 6.05, x1: 7.2, zBot: 9.3, zTop: 5.3, yBot: 3.23, yTop: 6.46, n: 15 },  // L1 → L2 (south wall, over the basement flight)
+];
+// slab openings under each level (stair wells) and the lift shaft
+export const SLAB_HOLES = { LG: [6.0, 5.2, W, 9.4], L1: [0.05, 5.9, 1.4, 10.4], L2: [6.0, 5.2, W, 9.4] };
+export const LIFT_HOLE = [LIFT.x0 - 0.15, LIFT.z0 - 0.15, W, LIFT.z1 + 0.15];
+// legacy names used by the building model
+export const STAIR_HOLE = SLAB_HOLES.L2;
+export const BSTAIR_HOLE = SLAB_HOLES.LG;
 // rectangle minus holes → list of rectangles [x0, z0, x1, z1]
 export function rectMinus(r, holes) {
   let out = [r];
@@ -43,25 +53,30 @@ export function rectMinus(r, holes) {
 
 // walls: [x0, z0, x1, z1, doorStart?] – door gaps are 0.85 wide along the wall
 const WALLS = {
-  LG: [[5.95, 3.3, 5.95, 7.95], [3.3, 4.4, 5.95, 4.4, 3.5], [3.3, 4.4, 3.3, 6.9], [3.3, 6.9, 5.95, 6.9]],
-  L1: [[0, 4.4, 3.3, 4.4, 2.4], [3.3, 4.4, W, 4.4], [3.3, 4.4, 3.3, 8.0, 6.9], [3.3, 8.0, W, 8.0], [3.3, 10.1, W, 10.1],
-       [3.3, 10.1, 3.3, 13.9, 10.4], [0, 11.4, 2.2, 11.4, 0.7], [2.2, 11.4, 2.2, 13.9], [0, 13.9, W, 13.9, 2.35]],
-  L2: [[0, 4.4, 3.3, 4.4, 2.4], [3.3, 4.4, W, 4.4, 3.5], [3.3, 4.4, 3.3, 8.0], [3.3, 8.0, W, 8.0]],
+  LG: [[1.6, 1.1, 1.6, 5.1], [0, 3.3, 1.6, 3.3, 0.4], [1.6, 5.1, 6.0, 5.1, 2.8], [3.75, 5.1, 3.75, 8.5, 5.4], [3.75, 8.5, 6.0, 8.5],
+       [3.75, 9.1, 6.0, 9.1, 4.6], [6.0, 5.1, 6.0, 9.1], [0, 11.3, 1.1, 11.3], [3.75, 11.3, 3.75, 13.6, 12.4], [3.75, 13.6, 3.75, DEPTH],
+       [5.1, 11.9, W, 11.9], [5.1, 11.9, 5.1, 13.6, 12.5], [3.75, 13.6, W, 13.6, 4.0]],
+  L1: [[5.1, 12.0, W, 12.0], [5.1, 12.0, 5.1, 14.2, 13.2], [5.1, 14.2, W, 14.2]],
+  L2: [[0, 4.6, W, 4.6, 5.0], [3.6, 4.6, 3.6, 9.0, 6.3], [3.6, 9.0, 3.6, 12.0, 10.0], [0, 9.0, 3.6, 9.0], [0, 12.0, W, 12.0, 4.2]],
 };
 // wet rooms
 const WET = {
-  LG: [{ name: 'Powder', x0: 3.3, z0: 4.4, x1: 5.95, z1: 6.9, wc: [5.55, 6.55], basin: [4.1, 6.6] }],
-  L1: [{ name: 'Bath 2', x0: 3.3, z0: 4.4, x1: W, z1: 8.0, wc: [6.9, 5.0], basin: [4.4, 4.7], bath: [3.4, 7.2, 5.2, 7.95], shower: [5.6, 6.3, W - 0.05, 7.95] },
-       { name: 'Bath 3', x0: 0, z0: 11.4, x1: 2.2, z1: 13.9, wc: [0.35, 13.3], basin: [1.55, 13.62], shower: [0.05, 11.45, 1.25, 12.6] }],
-  L2: [{ name: 'Ensuite', x0: 3.3, z0: 4.4, x1: W, z1: 8.0, wc: [6.9, 7.55], basin: [4.3, 7.7], basin2: [5.4, 7.7], shower: [5.6, 4.45, W - 0.05, 6.1], bath: [3.4, 4.6, 5.1, 5.4] }],
+  LG: [{ name: 'Bath 1', x0: 3.75, z0: 5.1, x1: 6.0, z1: 8.5, wc: [5.65, 6.9], basin: [4.45, 5.45], shower: [3.8, 7.3, 5.95, 8.45] },
+       { name: 'Laundry', x0: 5.1, z0: 11.9, x1: W, z1: 13.6, basin: [6.0, 13.3] }],
+  L1: [{ name: 'Powder', x0: 5.1, z0: 12.0, x1: W, z1: 14.2, wc: [6.9, 13.8], basin: [5.9, 12.3] }],
+  L2: [{ name: 'Ensuite', x0: 0, z0: 4.6, x1: 3.6, z1: 9.0, wc: [3.2, 6.9], basin: [1.0, 4.9], basin2: [2.2, 4.9], shower: [0.05, 7.2, 1.6, 8.95], bath: [1.8, 8.1, 3.5, 8.9] }],
 };
-const CARPET = { L1: [[0, 0, W, 4.4], [3.3, 10.1, W, 13.9], [0, 13.9, W, DEPTH]], L2: [[0, 0, W, 4.4]] };
-const OAK = { LG: [[0, 0, W, 4.4], [0, 4.4, 3.3, DEPTH], [3.3, 6.9, W, DEPTH]], L1: [[0, 4.4, 3.3, 11.4], [3.3, 8.0, 5.9, 10.1], [2.2, 11.4, 3.3, 13.9]], L2: [[0, 4.4, 3.3, 10.1], [3.3, 8.0, 5.9, 10.1], [0, 10.1, W, DEPTH2]] };
-const FLOOR_HOLES = { LG: [BSTAIR_HOLE, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, W, LIFT.z1 + 0.15]], L1: [STAIR_HOLE, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, W, LIFT.z1 + 0.15]], L2: [STAIR_HOLE, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, W, LIFT.z1 + 0.15]] };
+const CARPET = { LG: [[1.6, 1.1, W, 5.1], [3.75, 13.6, W, DEPTH], [0, 11.3, 3.75, DEPTH]], L2: [[0, 0, W, 4.6], [0, 12.0, W, DEPTH2]] };
+const OAK = {
+  LG: [[0, 3.3, 1.6, 5.1], [0, 5.1, 3.75, 11.3], [3.75, 9.1, 6.0, 11.9], [3.75, 11.3, 5.1, 13.6]],
+  L1: [[0, 0, W, 12.0], [0, 12.0, 5.1, DEPTH], [5.1, 14.2, W, DEPTH]],
+  L2: [[3.6, 4.6, W, 12.0], [0, 9.0, 3.6, 12.0]],
+};
+const FLOOR_HOLES = { LG: [SLAB_HOLES.LG, LIFT_HOLE], L1: [SLAB_HOLES.L1, LIFT_HOLE], L2: [SLAB_HOLES.L2, LIFT_HOLE] };
 export const ROOMS = {
-  LG: [['Entry', 2.2, 2.0], ['Powder', 4.6, 5.6], ['Kitchen', 3.2, 8.6], ['Dining', 2.6, 13.0], ['Living', 3.6, 16.2]],
-  L1: [['Bed 2', 3.6, 2.2], ['Bath 2', 5.3, 6.2], ['Landing', 1.6, 8.8], ['Bed 3', 5.3, 12.0], ['Bath 3', 1.1, 12.6], ['Bed 4', 3.6, 16.0]],
-  L2: [['Master', 3.6, 2.2], ['Ensuite', 5.3, 6.0], ['Landing', 1.6, 8.5], ['Lounge', 3.6, 12.2], ['Terrace', 3.6, 16.0]],
+  LG: [['West tce', 4.4, 0.55], ['Entry', 0.8, 4.2], ['Bed 4 / office', 4.4, 3.1], ['Bath 1', 4.9, 6.6], ['Gallery', 2.0, 8.0], ['Laundry', 6.2, 12.7], ['Bed 3', 5.5, 15.8], ['Media', 1.9, 14.6]],
+  L1: [['Living', 3.6, 2.6], ['Dining', 3.4, 7.8], ['Kitchen', 3.0, 15.5], ['Powder', 6.2, 13.1]],
+  L2: [['Master', 3.6, 2.3], ['Ensuite', 1.8, 6.4], ['Landing', 4.8, 8.0], ['Robe', 1.8, 10.5], ['Bed 2', 3.6, 13.1], ['Terrace', 3.6, 16.0]],
 };
 
 export const COL = {
@@ -149,7 +164,7 @@ export function buildHouse(stageIndex) {
     const near = box(-0.15, l.y, 0, 0, l.y + hgt, l.depth, COL.concrete, null, { roughness: 0.9 });
     nearWall.add(near);
     // slab under the level
-    for (const [a, b, c, d] of rectMinus([-0.15, 0, W + 0.15, l.depth], [l.id === 'LG' ? BSTAIR_HOLE : STAIR_HOLE]))
+    for (const [a, b, c, d] of rectMinus([-0.15, 0, W + 0.15, l.depth], [SLAB_HOLES[l.id], LIFT_HOLE]))
       shell.add(box(a, l.y - 0.275, b, c, l.y, d, COL.slab));
     // lift shaft (precast)
     const sh = (x0, z0, x1, z1) => shell.add(box(x0, l.y, z0, x1, l.y + hgt, z1, COL.concrete));
@@ -157,12 +172,20 @@ export function buildHouse(stageIndex) {
     sh(LIFT.x0 - 0.15, LIFT.z1, LIFT.x1 + 0.15, LIFT.z1 + 0.15);
     sh(LIFT.x1, LIFT.z0, W, LIFT.z1);
     // glazing front & back
-    for (const z of [0.02, l.depth - 0.02]) {
-      const g = new THREE.Group();
-      const pane = new THREE.Mesh(boxGeo(W - 0.2, hgt - 0.1, 0.03), mat(COL.glass, { transparent: true, opacity: 0.28, roughness: 0.1, metalness: 0.3, depthWrite: false }));
-      pane.position.set(W / 2, l.y + hgt / 2, z); g.add(pane);
-      for (let x = 0.1; x <= W - 0.09; x += (W - 0.2) / 3) { const m = new THREE.Mesh(boxGeo(0.06, hgt, 0.08), mat(COL.frame)); m.position.set(x, l.y + hgt / 2, z); g.add(m); }
+    const panes = l.id === 'LG' ? [[1.6, W, FRONT_LG + 0.02], [0, W, l.depth - 0.02]] : [[0, W, 0.02], [0, W, l.depth - 0.02]];
+    for (const [px0, px1, z] of panes) {
+      const g = new THREE.Group(), pw = px1 - px0;
+      const pane = new THREE.Mesh(boxGeo(pw - 0.2, hgt - 0.1, 0.03), mat(COL.glass, { transparent: true, opacity: 0.28, roughness: 0.1, metalness: 0.3, depthWrite: false }));
+      pane.position.set((px0 + px1) / 2, l.y + hgt / 2, z); g.add(pane);
+      const nm = Math.max(1, Math.round(pw / 1.9));
+      for (let k = 0; k <= nm; k++) { const m = new THREE.Mesh(boxGeo(0.06, hgt, 0.08), mat(COL.frame)); m.position.set(px0 + 0.1 + k * (pw - 0.2) / nm, l.y + hgt / 2, z); g.add(m); }
       shell.add(g);
+    }
+    if (l.id === 'LG') {
+      // entry door (solid timber pivot) at the back of the porch, and the west terrace paving
+      shell.add(box(0.35, 0, PORCH[3] - 0.03, 1.3, 2.4, PORCH[3] + 0.03, 0x6a5646));
+      shell.add(box(-0.15, -0.02, 0, W + 0.15, 0, FRONT_LG, 0xd9d3c7));
+      shell.add(box(-0.15, -0.02, FRONT_LG, PORCH[2], 0, PORCH[3], 0xd9d3c7));
     }
   }
   // L2 terrace slab and roof
@@ -173,8 +196,8 @@ export function buildHouse(stageIndex) {
   for (const y of [3.23, 6.46]) shell.add(box(0.5, y - 0.25, -1.8, W - 0.5, y, 0, COL.concrete));
   // LG garden & pool, neighbours ghosted
   // basement stair (precast, L0 → LG) seen through its void
-  { const n = 15, rise = 2.79 / n, go = 4.5 / n;
-    for (let i = 0; i < n; i++) shell.add(box(5.98, -2.79 + i * rise - 0.18, 7.8 - (i + 1) * go, W - 0.02, -2.79 + (i + 1) * rise, 7.8 - i * go, COL.concrete)); }
+  { const f = FLIGHTS[0], go = (f.zBot - f.zTop) / f.n, rise = (f.yTop - f.yBot) / f.n;
+    for (let i = 0; i < f.n; i++) shell.add(box(f.x0 + 0.03, f.yBot + i * rise - 0.18, f.zBot - (i + 1) * go, f.x1 - 0.03, f.yBot + (i + 1) * rise, f.zBot - i * go, COL.concrete)); }
   // rear terrace (grid C–B) and pool podium (grid B–A), house bay neighbours ghosted
   context.add(box(-7.55, -0.06, DEPTH, W + 7.55, -0.02, 26.5, COL.grass));
   context.add(box(1.1, -1.4, 21.7, 6.1, -0.06, 24.6, COL.water, null, { transparent: true, opacity: 0.8, roughness: 0.1 }));
@@ -219,7 +242,7 @@ export function buildHouse(stageIndex) {
     add(cb, { stage: 'frame', seq: li * 20 + 15, anim: 'fade', level: li, ceiling: true });
 
     // 2 plumbing & gas
-    const stackX = 5.6, stackZ = 7.85;
+    const stackX = 5.9, stackZ = 11.95;
     pipe([[stackX, y - 0.2, stackZ], [stackX, y + 3.0, stackZ]], 0.055, COL.waste, { stage: 'plumb', seq: li * 10, level: li });
     for (const r of WET[l.id]) {
       const fx = [r.wc, r.basin, r.basin2, r.shower && [(r.shower[0] + r.shower[2]) / 2, (r.shower[1] + r.shower[3]) / 2], r.bath && [(r.bath[0] + r.bath[2]) / 2, (r.bath[1] + r.bath[3]) / 2]].filter(Boolean);
@@ -229,12 +252,12 @@ export function buildHouse(stageIndex) {
         pipe([[stackX - 0.25, y + 0.25, stackZ], [stackX - 0.25, y + 0.25, fz - 0.1], [fx0 - 0.1, y + 0.25, fz - 0.1], [fx0 - 0.1, y + 0.6, fz - 0.1]], 0.012, COL.hot, { stage: 'plumb', seq: li * 10 + 1 + k, level: li });
       });
     }
-    if (l.id === 'LG') {
-      // kitchen & scullery feeds, gas to hob and fire
-      pipe([[stackX - 0.2, y + 0.2, stackZ], [stackX - 0.2, y + 0.2, 11.6], [W - 0.3, y + 0.2, 11.6], [W - 0.3, y + 0.9, 11.6]], 0.012, COL.cold, { stage: 'plumb', seq: 8 });
-      pipe([[stackX - 0.3, y + 0.25, stackZ], [stackX - 0.3, y + 0.25, 11.8], [W - 0.3, y + 0.25, 11.8], [W - 0.3, y + 0.9, 11.8]], 0.012, COL.hot, { stage: 'plumb', seq: 8 });
-      pipe([[0.2, y + 0.3, 0.3], [0.2, y + 0.3, 10.4], [3.6, y + 0.3, 10.4], [3.6, y + 0.9, 10.4]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
-      pipe([[0.2, y + 0.3, 10.4], [0.2, y + 0.3, 16.2], [0.3, y + 0.5, 16.2]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
+    if (l.id === 'L1') {
+      // kitchen feeds (sink on the island), gas to the hob and the living-room fire
+      pipe([[stackX - 0.2, y + 0.2, stackZ], [3.9, y + 0.2, stackZ], [3.9, y + 0.2, 14.3], [3.9, y + 0.9, 14.3]], 0.012, COL.cold, { stage: 'plumb', seq: 8 });
+      pipe([[stackX - 0.3, y + 0.25, stackZ], [4.0, y + 0.25, stackZ], [4.0, y + 0.25, 14.4], [4.0, y + 0.9, 14.4]], 0.012, COL.hot, { stage: 'plumb', seq: 8 });
+      pipe([[0.2, y + 0.3, 0.3], [0.2, y + 0.3, 15.6], [0.5, y + 0.3, 15.6], [0.5, y + 0.9, 15.6]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
+      pipe([[0.2, y + 0.3, 2.6], [0.3, y + 0.5, 2.6]], 0.014, COL.gas, { stage: 'plumb', seq: 9 });
     }
 
     // 3 electrical & data: ceiling cable runs + boxes on studs
@@ -248,7 +271,7 @@ export function buildHouse(stageIndex) {
         box(px - 0.04, y + h - 0.05, pz - 0.04, px + 0.04, y + h + 0.05, pz + 0.04, COL.box, { stage: 'elec', seq: li * 10 + 5, anim: 'fade', level: li, hideAfter: 'line' });
       }
     });
-    if (l.id === 'LG') box(0.01, 1.2, 2.9, 0.14, 1.9, 3.5, 0x3a4450, { stage: 'elec', seq: 9, anim: 'fade' }); // DigiHome panel
+    if (l.id === 'LG') box(0.01, 1.2, 4.3, 0.14, 1.9, 4.9, 0x3a4450, { stage: 'elec', seq: 9, anim: 'fade' }); // DigiHome panel in the entry
 
     // 4 HVAC: trunk + branches + grilles
     const dy = y + CEIL + 0.14;
@@ -272,8 +295,8 @@ export function buildHouse(stageIndex) {
       for (let x = x0 + 0.15; x <= x1 - 0.15; x += 0.3) { pts.push([x, y + 0.02, up ? z0 + 0.15 : z1 - 0.15], [x, y + 0.02, up ? z1 - 0.15 : z0 + 0.15]); up = !up; }
       pipe(pts, 0.01, COL.ufh, { stage: 'ufh', seq: li * 10 + k, level: li });
     };
-    if (l.id === 'LG') { loop(0.2, 12.0, 3.6, 17.7, 0); loop(3.7, 12.0, W - 0.1, 17.7, 1); }
-    WET[l.id].forEach((r, k) => loop(r.x0, r.z0, r.x1, r.z1, 2 + k));
+    if (l.id === 'L1') { loop(0.2, 0.3, 3.6, 5.0, 0); loop(3.7, 0.3, W - 0.1, 5.0, 1); loop(1.4, 10.5, 5.0, 17.6, 2); }
+    WET[l.id].forEach((r, k) => loop(r.x0, r.z0, r.x1, r.z1, 4 + k));
 
     // 6 pre-line: check marks
     const pass = makeLabel('PRE-LINE ✓', 0.55, '#2e7d4f');
@@ -299,7 +322,7 @@ export function buildHouse(stageIndex) {
         else box(x0 - o, y, z0, x0 + o, y + CEIL, z1, color, opts, { roughness: stage === 'final' ? 0.55 : 0.9 });
       });
       // ceilings stop at the stairwell on LG and L1
-      for (const [a, b, c, d] of rectMinus([0.01, 0.05, W - 0.01, l.depth - 0.05], li < 2 ? [STAIR_HOLE, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, W, LIFT.z1 + 0.15]] : [[LIFT.x0 - 0.15, LIFT.z0 - 0.15, W, LIFT.z1 + 0.15]]))
+      for (const [a, b, c, d] of rectMinus([0.01, 0.05, W - 0.01, l.depth - 0.05], li < 2 ? [SLAB_HOLES[LEVELS[li + 1].id], LIFT_HOLE] : [LIFT_HOLE]))
         box(a, y + CEIL - 0.004 - off * 0.2, b, c, y + CEIL + 0.005 - off * 0.2, d, color,
           { stage, seq: li * 20 + 19, anim: 'fade', level: li, hideAfter: hide, ceiling: true }, { roughness: 0.9 });
     });
@@ -308,7 +331,7 @@ export function buildHouse(stageIndex) {
     box(W - 0.025, y + CEIL - 0.02, 0.05, W - 0.005, y + CEIL, l.depth - 0.05, 0x1a1a1a, { stage: 'line', seq: li * 20 + 19, anim: 'fade', level: li });
 
     // 10 wet areas: screed + membrane, 11 tiling
-    const tileMat = { map: tileTex(), roughness: 0.35 };
+    const tileMat = { userData: { surf: 'tile' }, roughness: 0.35 };
     WET[l.id].forEach((r, k) => {
       box(r.x0 + 0.06, y, r.z0 + 0.06, r.x1 - 0.01, y + 0.04, r.z1 - 0.06, COL.screed, { stage: 'wp', seq: li * 4 + k, anim: 'rise', level: li });
       box(r.x0 + 0.06, y + 0.04, r.z0 + 0.06, r.x1 - 0.01, y + 0.047, r.z1 - 0.06, COL.membrane, { stage: 'wp', seq: li * 4 + k + 0.5, anim: 'fade', level: li, hideAfter: 'tile' }, { roughness: 0.5 });
@@ -316,18 +339,16 @@ export function buildHouse(stageIndex) {
       box(r.x1 - 0.03, y, r.z0 + 0.06, r.x1 - 0.01, y + 1.8, r.z1 - 0.06, COL.membrane, { stage: 'wp', seq: li * 4 + k + 0.5, anim: 'rise', level: li, hideAfter: 'tile' });
       // tiles
       const tf = box(r.x0 + 0.06, y + 0.047, r.z0 + 0.06, r.x1 - 0.01, y + 0.06, r.z1 - 0.06, 0xffffff, { stage: 'tile', seq: li * 4 + k, anim: 'fade', level: li }, tileMat);
-      tf.material.map.repeat.set((r.x1 - r.x0) / 0.6, (r.z1 - r.z0) / 1.2);
-      const tw = box(r.x1 - 0.035, y + 0.06, r.z0 + 0.06, r.x1 - 0.015, y + 2.6, r.z1 - 0.06, 0xffffff, { stage: 'tile', seq: li * 4 + k + 0.5, anim: 'rise', level: li }, { map: tileTex(), roughness: 0.35 });
-      tw.material.map.repeat.set((r.z1 - r.z0) / 0.6, 2.6 / 1.2);
+      const tw = box(r.x1 - 0.035, y + 0.06, r.z0 + 0.06, r.x1 - 0.015, y + 2.6, r.z1 - 0.06, 0xffffff, { stage: 'tile', seq: li * 4 + k + 0.5, anim: 'rise', level: li }, { userData: { surf: 'tile' }, roughness: 0.35 });
     });
     if (l.id === 'L2') {
       // outdoor porcelain on pedestals to the terrace
       for (let x = 0.3; x < W - 0.2; x += 1.2) for (let z = DEPTH2 + 0.3; z < DEPTH - 0.3; z += 0.6)
-        box(x, y + 0.12, z, x + 1.18, y + 0.14, z + 0.58, 0xffffff, { stage: 'tile', seq: 12 + x, anim: 'drop', level: 2 }, { map: tileTex(), roughness: 0.5 });
+        box(x, y + 0.12, z, x + 1.18, y + 0.14, z + 0.58, 0xffffff, { stage: 'tile', seq: 12 + x, anim: 'drop', level: 2 }, { userData: { surf: 'tile' }, roughness: 0.5 });
     }
 
     // 13 lift: car + landing doors
-    box(LIFT.x0 - 0.04, y, LIFT.z0 + 0.25, LIFT.x0 - 0.02, y + 2.1, LIFT.z1 - 0.25, COL.liftDoor, { stage: 'lift', seq: 1 + li, anim: 'rise', level: li }, { metalness: 0.7, roughness: 0.3 });
+    box(LIFT.x0 - 0.2, y, LIFT.z0 + 0.15, LIFT.x0 - 0.17, y + 2.1, LIFT.z1 - 0.15, COL.liftDoor, { stage: 'lift', seq: 1 + li, anim: 'rise', level: li }, { metalness: 0.7, roughness: 0.3 });
 
     // 14 doors & skirtings
     walls.forEach(([x0, z0, x1, z1, door], k) => {
@@ -352,14 +373,14 @@ export function buildHouse(stageIndex) {
 
     // 15 kitchen, scullery, wardrobes, vanities
     const cab2 = (x0, z0, x1, z1, h, seq) => box(x0, y, z0, x1, y + h, z1, COL.joinery, { stage: 'kitchen', seq, level: li }, { roughness: 0.6 });
-    if (l.id === 'LG') {
-      cab2(2.6, 9.3, 4.6, 11.7, 0.87, 0);           // island
-      cab2(3.35, 6.95, 5.7, 7.55, 2.4, 1);          // tall pantry / oven / fridge wall
-      cab2(W - 0.62, 10.15, W - 0.01, 13.2, 0.87, 2); // sink run on the south party wall
-      box(W - 0.35, y + 1.5, 10.15, W - 0.01, y + 2.4, 13.2, COL.joinery, { stage: 'kitchen', seq: 2.5, level: li }, { roughness: 0.6 }); // wall units
+    if (l.id === 'L1') {
+      cab2(2.6, 13.4, 4.9, 15.6, 0.9, 0);           // island with the sink
+      cab2(0.01, 12.6, 0.63, 17.2, 0.9, 1);          // back run on the north party wall (hob)
+      cab2(0.01, 11.0, 0.63, 12.6, 2.4, 1.5);        // tall ovens / fridge
+      box(0.01, y + 1.5, 13.2, 0.36, y + 2.4, 17.2, COL.joinery, { stage: 'kitchen', seq: 2.5, level: li }, { roughness: 0.6 }); // wall units
     }
-    if (l.id === 'L1') { cab2(3.4, 3.8, W - 0.01, 4.35, 2.4, 3); cab2(3.4, 12.0, 4.0, 13.85, 2.4, 3); cab2(3.4, 13.95, W - 0.01, 14.55, 2.4, 3); }
-    if (l.id === 'L2') { cab2(0.01, 1.2, 0.61, 4.3, 2.4, 3); }
+    if (l.id === 'LG') { cab2(1.7, 4.45, 3.6, 5.05, 2.4, 3); cab2(W - 0.61, 13.7, W - 0.01, 15.4, 2.4, 3); cab2(3.1, 3.3, 3.74, 5.05, 2.4, 3); }
+    if (l.id === 'L2') { cab2(0.01, 9.1, 0.61, 11.95, 2.4, 3); cab2(2.95, 9.1, 3.55, 11.95, 2.4, 3); cab2(0.01, 12.1, 0.61, 13.9, 2.4, 3); }
     WET[l.id].forEach((r, k) => {
       for (const b of [r.basin, r.basin2].filter(Boolean))
         box(b[0] - 0.5, y + 0.35, b[1] - 0.25, b[0] + 0.5, y + 0.8, b[1] + 0.25, COL.joinery, { stage: 'kitchen', seq: 4 + k, level: li }, { roughness: 0.6 });
@@ -367,21 +388,21 @@ export function buildHouse(stageIndex) {
 
     // 17 benchtops
     const top2 = (x0, z0, x1, z1, h, seq) => box(x0, y + h, z0, x1, y + h + 0.03, z1, COL.bench, { stage: 'bench', seq, level: li }, { roughness: 0.25 });
-    if (l.id === 'LG') { top2(2.55, 9.25, 4.65, 11.75, 0.87, 0); top2(W - 0.64, 10.15, W - 0.01, 13.2, 0.87, 1); }
+    if (l.id === 'L1') { top2(2.55, 13.35, 4.95, 15.65, 0.9, 0); top2(0.01, 12.6, 0.66, 17.2, 0.9, 1); }
     WET[l.id].forEach((r, k) => { for (const b of [r.basin, r.basin2].filter(Boolean)) top2(b[0] - 0.52, b[1] - 0.27, b[0] + 0.52, b[1] + 0.27, 0.8, 2 + k); });
 
     // 18 second fix: sanitaryware, appliances, lights, grilles
     WET[l.id].forEach((r, k) => {
-      const [wx, wz] = r.wc;
-      box(wx - 0.18, y + 0.3, wz - 0.25, wx + 0.18, y + 0.42, wz + 0.25, COL.sanitary, { stage: 'fitoff', seq: li * 6 + k, level: li }, { roughness: 0.2 });
+      if (r.wc) { const [wx, wz] = r.wc; box(wx - 0.18, y + 0.3, wz - 0.25, wx + 0.18, y + 0.42, wz + 0.25, COL.sanitary, { stage: 'fitoff', seq: li * 6 + k, level: li }, { roughness: 0.2 }); }
       for (const b of [r.basin, r.basin2].filter(Boolean)) box(b[0] - 0.25, y + 0.83, b[1] - 0.18, b[0] + 0.25, y + 0.95, b[1] + 0.18, COL.sanitary, { stage: 'fitoff', seq: li * 6 + k, level: li }, { roughness: 0.2 });
       if (r.bath) box(r.bath[0], y + 0.06, r.bath[1], r.bath[2], y + 0.6, r.bath[3], COL.sanitary, { stage: 'fitoff', seq: li * 6 + k + 1, level: li }, { roughness: 0.2 });
       if (r.shower) box(r.shower[0], y + 0.06, r.shower[1], r.shower[0] + 0.012, y + 2.1, r.shower[3], COL.balustrade, { stage: 'fitoff', seq: li * 6 + k + 1, level: li }, { transparent: true, opacity: 0.35, roughness: 0.05 });
     });
-    if (l.id === 'LG') {
-      box(3.9, y + 0.6, 7.55, 4.5, y + 1.5, 7.58, COL.appliance, { stage: 'fitoff', seq: 20 }, { roughness: 0.3, metalness: 0.5 }); // ovens
-      box(4.7, y, 7.55, 5.6, y + 2.0, 7.58, 0x777d83, { stage: 'fitoff', seq: 20 }, { metalness: 0.7 }); // fridge
-      box(3.3, y + 0.9, 10.1, 3.9, y + 0.905, 10.8, COL.appliance, { stage: 'fitoff', seq: 20 }); // hob
+    if (l.id === 'L1') {
+      box(0.63, y + 0.6, 11.1, 0.66, y + 1.5, 11.7, COL.appliance, { stage: 'fitoff', seq: 20 }, { roughness: 0.3, metalness: 0.5 }); // ovens
+      box(0.63, y, 11.8, 0.66, y + 2.0, 12.5, 0x777d83, { stage: 'fitoff', seq: 20 }, { metalness: 0.7 }); // fridge
+      box(0.1, y + 0.93, 14.6, 0.55, y + 0.935, 15.4, COL.appliance, { stage: 'fitoff', seq: 20 }); // hob
+      box(0.05, y + 1.5, 14.6, 0.5, y + 1.55, 15.4, 0x9aa1a8, { stage: 'fitoff', seq: 20 }, { metalness: 0.8 }); // rangehood
     }
     const lights = [];
     for (let x = 0.9; x < W; x += 1.8) for (let z = 1; z < l.depth; z += 2)
@@ -390,10 +411,10 @@ export function buildHouse(stageIndex) {
       box(3.8, y + CEIL - 0.02, z - 0.1, 4.6, y + CEIL - 0.004, z + 0.1, 0xdadcdd, { stage: 'fitoff', seq: li * 6 + 5, anim: 'fade', level: li });
 
     // 21 floors: oak + carpet + protection
-    const oakMat = () => ({ map: oakTex(), roughness: 0.55 });
+    const oakMat = () => ({ userData: { surf: 'oak' }, roughness: 0.55 });
     (OAK[l.id] || []).flatMap(r => rectMinus(r, FLOOR_HOLES[l.id])).forEach(([x0, z0, x1, z1], k) => {
       const m = box(x0 + 0.01, y + 0.001, z0 + 0.01, x1 - 0.01, y + 0.02, z1 - 0.01, 0xffffff, { stage: 'floor', seq: li * 6 + k, anim: 'fade', level: li }, oakMat());
-      m.material.map.repeat.set((x1 - x0) / 1.8, (z1 - z0) / 1.6);
+      m.userData.surf = 'oak';
       box(x0 + 0.05, y + 0.02, z0 + 0.05, x1 - 0.05, y + 0.03, z1 - 0.05, COL.protect, { stage: 'floor', seq: li * 6 + k + 0.5, anim: 'fade', level: li, rm: 'handover', rmSeq: li, temp: true });
     });
     (CARPET[l.id] || []).forEach(([x0, z0, x1, z1], k) => box(x0 + 0.05, y + 0.001, z0 + 0.05, x1 - 0.05, y + 0.025, z1 - 0.05, COL.carpet, { stage: 'floor', seq: li * 6 + 3 + k, anim: 'fade', level: li }, { roughness: 1 }));
@@ -402,22 +423,23 @@ export function buildHouse(stageIndex) {
     ROOMS[l.id].forEach(([n, x, z]) => { const s = makeLabel(n, 0.32); s.position.set(x, y + 1.3, z); s.userData.level = li; labels.add(s); });
   });
 
-  // ------------------------------------------------------------------ spiral stair (LG → L2)
-  for (let f = 0; f < 2; f++) {
-    const y0 = LEVELS[f].y, n = 17, rise = 3.23 / n, cx = SPIRAL.cx, cz = SPIRAL.cz, r = SPIRAL.r;
+  // ------------------------------------------------------------------ internal stair (AD-11: straight flights on the south wall, then the north wall)
+  FLIGHTS.slice(1).forEach((fl, f) => {
     const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.23, 12), mat(0x2d2f33, { metalness: 0.5 }));
-    pole.position.set(cx, y0 + 3.23 / 2, cz); g.add(pole);
-    for (let i = 0; i < n; i++) {
-      const a = (f * n + i) * (Math.PI * 2 / 13);
-      const t = new THREE.Mesh(boxGeo(r, 0.05, 0.34), mat(COL.oakTread, { roughness: 0.5 }));
-      t.position.set(cx + Math.cos(a) * r / 2, y0 + (i + 1) * rise - 0.025, cz + Math.sin(a) * r / 2); t.rotation.y = -a;
+    const dir = Math.sign(fl.zTop - fl.zBot), run = Math.abs(fl.zTop - fl.zBot), go = run / fl.n, rise = (fl.yTop - fl.yBot) / fl.n;
+    for (let i = 0; i < fl.n; i++) {
+      const t = new THREE.Mesh(boxGeo(fl.x1 - fl.x0, 0.05, go + 0.03), mat(COL.oakTread, { roughness: 0.5 }));
+      t.position.set((fl.x0 + fl.x1) / 2, fl.yBot + (i + 1) * rise - 0.025, fl.zBot + dir * (i + 0.5) * go);
       g.add(t);
-      const post = new THREE.Mesh(boxGeo(0.02, 1.0, 0.02), mat(0x2d2f33)); post.position.set(cx + Math.cos(a) * (r - 0.03), y0 + (i + 1) * rise + 0.5, cz + Math.sin(a) * (r - 0.03)); g.add(post);
-      const rail = new THREE.Mesh(boxGeo(0.05, 0.05, 0.36), mat(COL.oakTread)); rail.position.set(cx + Math.cos(a) * (r - 0.03), y0 + (i + 1) * rise + 1.0, cz + Math.sin(a) * (r - 0.03)); rail.rotation.y = -a; g.add(rail);
     }
+    const len = Math.hypot(run, fl.yTop - fl.yBot), tilt = -dir * Math.atan2(fl.yTop - fl.yBot, run);
+    const openX = fl.x0 < 1 ? fl.x1 + 0.02 : fl.x0 - 0.02;       // the side away from the party wall
+    const mk = (geo, m, x, yo) => { const o = new THREE.Mesh(geo, m); o.position.set(x, (fl.yBot + fl.yTop) / 2 + yo, (fl.zBot + fl.zTop) / 2); o.rotation.x = tilt; g.add(o); return o; };
+    mk(boxGeo(0.06, 0.3, len), mat(0x2d2f33), openX, 0);
+    mk(boxGeo(0.015, 1.0, len), mat(COL.balustrade, { transparent: true, opacity: 0.3, roughness: 0.05 }), openX, 0.6);
+    mk(boxGeo(0.05, 0.05, len), mat(COL.oakTread), openX, 1.12);
     add(g, { stage: 'stair', seq: f, anim: 'rise', level: f });
-  }
+  });
 
   // lift car rides the shaft once installed
   const car = new THREE.Group();
@@ -427,8 +449,8 @@ export function buildHouse(stageIndex) {
 
   // gas fire
   const fire = new THREE.Group();
-  { const b = new THREE.Mesh(boxGeo(0.35, 0.6, 1.2), mat(0x1f2124)); b.position.set(0.18, 0.7, 16.2);
-    const fl = new THREE.Mesh(boxGeo(0.02, 0.18, 0.95), mat(0xff7a1a, { emissive: 0xff5a00, emissiveIntensity: 0 })); fl.position.set(0.36, 0.6, 16.2);
+  { const b = new THREE.Mesh(boxGeo(0.35, 0.6, 1.2), mat(0x1f2124)); b.position.set(0.18, 3.23 + 0.7, 2.6);
+    const fl = new THREE.Mesh(boxGeo(0.02, 0.18, 0.95), mat(0xff7a1a, { emissive: 0xff5a00, emissiveIntensity: 0 })); fl.position.set(0.36, 3.23 + 0.6, 2.6);
     fire.add(b, fl); fire.userData.flame = fl; }
   add(fire, { stage: 'fire', seq: 0 });
 
