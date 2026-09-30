@@ -119,8 +119,17 @@ Everything is built in drawing coordinates (x = grid 1 → 8, z = street → rea
 ### Export and photoreal rendering
 
 - **`tools/export.html`**: exports the finished project (all houses fitted out, the street and suburb) as one `.glb`, in metres with Y up and materials named by surface. Open it in Blender, Twinmotion, Lumion, D5 Render, Enscape or SketchUp.
-- **`tools/render_blender.py`**: renders photoreal stills of that `.glb` with Blender Cycles. Output goes to `renders/`.
+- **`tools/render_blender.py`**: renders photoreal stills of that `.glb` with Blender Cycles (path-traced and denoised). Output goes to `renders/`. The shots are:
+  - street hero
+  - street oblique
+  - aerial
+  - pool court
+  - rear at evening
+  - L1 living interior
+
+  Each is 1920 × 1080 at 160 samples, lit by a Nishita sky at the real St Heliers sun position. To re-render: `python3 tools/render_blender.py --glb Goldie_Street_Completed.glb --out renders`
 - **`tools/build_share.py`**: rebuilds the three standalone share files, with textures embedded.
+- **Video capture**: frame-exact. Each viewer exposes `setT(t)` and `draw()` hooks, so every frame is fully rendered before it's saved. Frames are captured at 8 fps and motion-interpolated to 24 fps.
 
 ### Open items flagged from the drawings
 
