@@ -313,8 +313,10 @@ export function buildHouse(stageIndex) {
 
     // 8/9/12/20 lining layers: board, skim, paint, final coat – each hides the one below when done
     const layers = [['line', COL.gib, 0.013, 'skim'], ['skim', COL.skim, 0.016, 'paint'], ['paint', COL.paint1, 0.019, 'final'], ['final', COL.paint2, 0.022, null]];
+    // L2 party walls are timber framed (not exposed precast), so they are lined and painted too
+    const liningSegs = l.id === 'L2' ? [...wallSegs, [0.02, 0, 0.02, l.depth], [W - 0.02, 0, W - 0.02, l.depth]] : wallSegs;
     layers.forEach(([stage, color, off, hide]) => {
-      wallSegs.forEach(([x0, z0, x1, z1], k) => {
+      liningSegs.forEach(([x0, z0, x1, z1], k) => {
         const alongX = z0 === z1;
         const o = T / 2 + off;
         const opts = { stage, seq: li * 20 + k, anim: stage === 'line' ? 'rise' : 'fade', level: li, hideAfter: hide };

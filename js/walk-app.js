@@ -44,7 +44,9 @@ for (const o of bld.items) {
   const el = o.userData.el;
   const sid = STAGES[el.s].id;
   // every house is fitted out below, so hide the building model's simplified fitout, services and roof framing
-  o.visible = !(el.temp || el.rs != null || o.isSprite || sid === 'fitout' || sid === 'services' || (sid === 'roof' && el.house != null));
+  // ducts and stacks sit behind the linings of the fitted-out houses; the lift shafts, battens and cylinders stay
+  const hidden = sid === 'fitout' || (sid === 'services' && o.isMesh && [0xd46a3a, 0xb05a24].includes(o.material.color.getHex())) || (sid === 'roof' && el.house != null);
+  o.visible = !(el.temp || el.rs != null || o.isSprite || hidden);
 }
 
 // all five houses, completed and furnished (House 2 is the one on the tour)
@@ -76,7 +78,11 @@ const carAt = (x, y, z, rot, color, type) => { const c = MX.car(color, type); c.
   .forEach(([h, c, t], i) => carAt(houseX(h) + (i % 2 ? 3.9 : 1.6), D.L0, 7.6, Math.PI / 2, c, t));
 carAt(30, D.GL, -7.7, -Math.PI / 2, 0x33485e, 'suv'); carAt(7.5, D.GL, -7.7, -Math.PI / 2, 0xe8e8e6);
 realify(MIRROR);
-const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 70 });
+const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 26 });
+// warm interior light on each level of House 2 (downlights on, late afternoon)
+for (const [x, y, z] of [[3.6, 2.4, 7.5], [3.6, 2.4, 14.5], [3.6, 5.6, 4.0], [3.6, 5.6, 13.5], [3.6, 8.8, 3.0], [3.6, 8.8, 9.5]]) {
+  const l = new THREE.PointLight(0xffe2bd, 9, 9, 1.6); l.position.set(...toW(H(x, y, z))); scene.add(l);
+}
 
 // ------------------------------------------------------------------ collision (walk mode)
 // Door leaves, the LG front/rear sliders of House 2 and the vehicle/carpark doors are
@@ -144,19 +150,19 @@ function hitDist(origin, dir, far, list) {
 // p0/l0 → p1/l1 over d seconds; cut = fade through black into this shot
 const SHOTS = [
   { title: 'Goldie Street', text: 'Vellenoweth Green Residences: five terrace houses over a full basement carpark, set out to Hulena Architects AD-06/AD-11. Exit ramp at the north end, entry at the south. We walk through House 2.', p0: [-6, 12, -36], l0: [22, 7, 8], p1: [HX + 1.6, D.GL + EYE, -6.8], l1: [HX + 1.6, D.LG + 1.8, 4], d: 10 },
-  { title: 'Front garden & entry porch', text: 'Pedestrian gate in the block front wall, steps up to the recessed west terrace and the entry porch. Sto render, GRC fins, APL joinery and glass balustrades to the balconies above.', p0: [HX + 1.6, D.GL + EYE, -6.8], l0: [HX + 1.6, D.LG + 1.8, 4], p1: H(0.8, EYE, 0.4), l1: H(0.8, 1.3, 5), d: 7 },
+  { title: 'Front garden & entry porch', text: 'Pedestrian gate in the block front wall, steps up to the recessed west terrace and the entry porch. Sto render, GRC fins, APL joinery and glass balustrades to the balconies above.', p0: [HX + 1.6, D.GL + EYE, -6.8], l0: [HX + 1.6, D.LG + 1.8, 4], p1: H(0.85, EYE, -0.5), l1: H(0.85, 1.4, 5), d: 7 },
   { title: 'Entry & gallery – LG', text: 'The front door opens to the gallery: engineered oak, Level 5 plasterboard and the exposed architectural concrete party wall. Bed 4 / office to the right, bath 1 ahead.', p0: H(0.8, EYE, 3.7), l0: H(1.8, 1.4, 10), p1: H(2.4, EYE, 5.6), l1: H(2.6, 1.3, 12), d: 7, cut: true },
   { title: 'Open stair', text: 'Oak treads on steel stringers with a frameless glass balustrade rise LG → L1 along the north wall. The basement stair and the lift sit on the south wall, per AD-11.', p0: H(3.0, EYE, 5.6), l0: H(0.7, 1.4, 8.6), p1: H(2.6, EYE, 6.6), l1: H(0.7, 3.8, 10.2), d: 7 },
   { title: 'Media room', text: 'The media room at the rear of the LG opens through sliders to the east terrace and pool court. Bed 3 and the laundry are across the hall.', p0: H(3.0, EYE, 11.6), l0: H(1.2, 0.9, 15.5), p1: H(2.9, EYE, 12.3), l1: H(1.6, 1.0, 18.5), d: 7 },
   { title: 'Bedroom 3', text: 'Wool carpet, garden outlook and a built-in robe on the party wall.', p0: H(4.3, EYE, 14.1), l0: H(6.8, 0.8, 15.9), p1: H(4.5, EYE, 14.5), l1: H(6.0, 1.0, 17.9), d: 6 },
-  { title: 'East terrace', text: 'Porcelain on the podium over the basement, the outdoor kitchen, and the external spiral stair up to the L2 roof terrace (By Owner).', p0: H(2.2, EYE, 17.0), l0: H(3.6, 0.4, 24), p1: H(2.6, EYE, 19.4), l1: H(5.5, 1.8, 18.9), d: 7, cut: true },
+  { title: 'East terrace', text: 'Porcelain on the podium over the basement, the outdoor kitchen, and the external spiral stair up to the L2 roof terrace (By Owner).', p0: H(2.2, EYE, 17.0), l0: H(3.6, 0.4, 24), p1: H(3.0, EYE, 19.2), l1: H(6.4, 2.6, 18.7), d: 7, cut: true },
   { title: 'Pool court', text: 'Precast 3 × 5 m shell with a fibreglass lining and stone coping, a Vitex deck, and a frameless glass barrier to NZBC F9 with a self-closing, self-latching gate.', p0: H(0.9, EYE, 20.5), l0: H(4.0, -0.3, 23.2), p1: H(0.7, EYE, 25.3), l1: H(3.6, 3.0, 15), d: 8 },
   { title: 'Basement carpark – L0', text: 'Power-floated slab over the fully tanked box. One-way ramps (entry south, exit north), a double garage per house off the aisle, third spaces and storage behind.', p0: [HX + 3.2, D.L0 + EYE, 13.9], l0: [HX - 8, D.L0 + 1.2, 13.6], p1: [HX + 2.6, D.L0 + EYE, 12.6], l1: [HX + 2.7, D.L0 + 1.0, 5], d: 8, cut: true },
-  { title: 'Garage, stair & lift', text: 'From the garage, the precast stair rises along the south party wall to the LG gallery, beside the Powerglide lift. Heat-pump hot water cylinders are at the front of the garage.', p0: [HX + 4.9, D.L0 + EYE, 11.4], l0: [HX + 6.6, D.L0 + 1.0, 11.1], p1: [HX + 4.6, D.L0 + EYE, 10.2], l1: [HX + 6.6, D.L0 + 2.2, 6.2], d: 7 },
+  { title: 'Garage, stair & lift', text: 'From the garage, the precast stair rises along the south party wall to the LG gallery, beside the Powerglide lift. Heat-pump hot water cylinders are at the front of the garage.', p0: [HX + 3.6, D.L0 + EYE, 2.6], l0: [HX + 6.6, D.L0 + 1.2, 6.5], p1: [HX + 4.3, D.L0 + EYE, 3.4], l1: [HX + 6.6, D.L0 + 2.4, 9.0], d: 7 },
   { title: 'L1 – living', text: 'The living level (layout indicative): Escea gas fire, underfloor heating and full-height joinery to the balcony, with Vellenoweth Green across the street.', p0: H(5.2, 3.23 + EYE, 5.0), l0: H(1.0, 3.23 + 1.0, 2.6), p1: H(5.3, 3.23 + EYE, 4.2), l1: H(3.4, 3.23 + 1.2, -6), d: 8, cut: true },
   { title: 'Dining & kitchen', text: 'Island with a sintered stone benchtop, Gaggenau appliances and the kitchen opening to the garden side. Kitchens By Design, By Owner supply.', p0: H(3.2, 3.23 + EYE, 10.6), l0: H(3.6, 3.23 + 0.9, 14.6), p1: H(4.4, 3.23 + EYE, 11.0), l1: H(1.2, 3.23 + 1.2, 16.5), d: 8 },
   { title: 'L2 – master bedroom', text: 'Full-height glazing to the balcony with Vellenoweth Green beyond. Level 5 finish, wool carpet and sheers.', p0: H(5.6, 6.46 + EYE, 4.1), l0: H(3.0, 6.46 + 1.2, -3), p1: H(4.9, 6.46 + EYE, 3.9), l1: H(1.0, 6.46 + 1.0, -4), d: 7, cut: true },
-  { title: 'Ensuite', text: 'Walk-in frameless shower, freestanding bath, twin vanities with sintered stone tops and under-tile heating.', p0: H(3.0, 6.46 + EYE, 6.2), l0: H(0.8, 6.46 + 0.8, 8.2), p1: H(3.0, 6.46 + EYE, 7.0), l1: H(1.4, 6.46 + 0.9, 4.8), d: 6 },
+  { title: 'Ensuite', text: 'Walk-in frameless shower, freestanding bath, twin vanities with sintered stone tops and under-tile heating.', p0: H(3.25, 6.46 + EYE, 5.0), l0: H(0.8, 6.46 + 1.0, 8.4), p1: H(3.2, 6.46 + EYE, 5.8), l1: H(1.6, 6.46 + 0.9, 8.8), d: 6 },
   { title: 'L2 roof terrace', text: 'Outdoor porcelain on pedestals over the membrane roof, the heat-pump unit, and the spiral stair down to the terrace and pool court.', p0: H(2.4, 6.6 + EYE, 14.6), l0: H(3.6, 4.8, 26), p1: H(3.6, 6.6 + EYE, 16.9), l1: H(6.2, 3.8, 30), d: 7, cut: true },
   { title: 'Practical completion', text: 'Vellenoweth Green Residences, Houses 1–5. PC target Oct/Nov 2027.', p0: H(3.6, 6.46 + EYE, 1.0), l0: [HX + 3.6, D.L2 - 0.6, -25], p1: [-26, 30, -46], l1: [22, 6, 12], d: 10, cut: true },
 ];
@@ -345,7 +351,7 @@ function frame(now) {
     if (state.playing) { state.t += dt * state.speed; if (state.t >= T) { state.t = T - 0.001; state.playing = false; syncPlay(); } }
     applyTour();
   } else stepWalk(dt);
-  world.tick(now);
+  world.tick(now, camera);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }

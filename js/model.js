@@ -678,6 +678,9 @@ export function buildModel(stageIndex) {
     // HWCs in the basement, in front of the garage
     for (const dx of [0, 0.8]) cyl(HF(h) + 1.0 + dx, D.L0, 1.1, 0.33, 1.8, 0xe8e8e8, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 14);
   }
+  // carpark LED battens: along the aisle, over each garage and in the ramp bays
+  for (let x = 2; x < D.W - 1; x += 3.7) box(x - 0.6, lgSoffit - 0.06, 12.4, x + 0.6, lgSoffit - 0.02, 12.5, 0xffffff, { stage: 'services', seq: 17, anim: 'fade' }, { emissive: 0xfff6e8, emissiveIntensity: 1.4 });
+  for (let h = 0; h < 5; h++) for (const z of [3, 7.5]) box(HF(h) + 2.0, lgSoffit - 0.06, z, HF(h) + 3.2, lgSoffit - 0.02, z + 0.1, 0xffffff, { stage: 'services', seq: 17, anim: 'fade', house: h }, { emissive: 0xfff6e8, emissiveIntensity: 1.4 });
   // carpark extract fans along the aisle
   box(6, lgSoffit - 0.5, 13.4, 38, lgSoffit - 0.1, 13.9, 0x9aa4ad, { stage: 'services', seq: 16, anim: 'fade' });
 
@@ -792,7 +795,7 @@ export function buildModel(stageIndex) {
     if (h === 4) slatFence(x1, TZ0 + 0.3, x1, QZ1, PY + 0.9, 0.9, { stage: 'extdeck', seq: 4 + h * 0.01, anim: 'rise', house: h });
 
     // --- Externals 4 (per house): front path, steps up to the LG entry, pedestrian gate & letterbox
-    const fx0 = HF(h) + 0.8, fx1 = HF(h) + 2.4, nS = 5, rs = (D.LG - D.GL) / nS;
+    const fx0 = HF(h) + 0.1, fx1 = HF(h) + 1.55, nS = 5, rs = (D.LG - D.GL) / nS;
     for (let k = 0; k < nS; k++) box(fx0, D.GL, -0.3 - (nS - 1 - k) * 0.32 - 0.32, fx1, D.GL + (k + 1) * rs, -0.3 - (nS - 1 - k) * 0.32, EX.slab, { stage: 'extfront', seq: 4 + h * 0.01, anim: 'rise', house: h });
     box(fx0, D.GL, -0.3, fx1, D.LG, 0, EX.slab, { stage: 'extfront', seq: 4 + h * 0.01, anim: 'rise', house: h });
 
@@ -803,8 +806,8 @@ export function buildModel(stageIndex) {
       shb.position.set(x, PY + 0.85, (QZ1 + D.BD) / 2 + 0.05); add(shb, { stage: 'soft', seq: 2 + h * 0.01, anim: 'grow', house: h });
     }
     // front garden beds either side of the entry steps
-    box(HF(h) + 2.6, D.GL, D.FB + 0.35, HX(h + 1) - 0.1, D.GL + 0.12, -0.15, EX.soil, { stage: 'soft', seq: 1 + h * 0.01, anim: 'fade', house: h });
-    for (let x = HF(h) + 3.0; x < HX(h + 1) - 0.3; x += 0.9) {
+    box(HF(h) + 1.8, D.GL, D.FB + 0.35, HX(h + 1) - 0.1, D.GL + 0.12, -0.15, EX.soil, { stage: 'soft', seq: 1 + h * 0.01, anim: 'fade', house: h });
+    for (let x = HF(h) + 2.2; x < HX(h + 1) - 0.3; x += 0.9) {
       const shb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), mat(EX.shrub, { flatShading: true }));
       shb.position.set(x, D.GL + 0.35, -1.2); add(shb, { stage: 'soft', seq: 2 + h * 0.01, anim: 'grow', house: h });
     }
@@ -847,7 +850,7 @@ export function buildModel(stageIndex) {
   // front wall with a pedestrian gate and letterbox per house
   let wx = RAMPS[0][1] + 0.2;
   for (let h = 0; h < 5; h++) {
-    const g0 = HF(h) + 0.8, g1 = HF(h) + 2.4;
+    const g0 = HF(h) + 0.1, g1 = HF(h) + 1.55;
     box(wx, D.GL, D.FB + 0.02, g0, D.GL + 1.1, D.FB + 0.22, EX.block, { stage: 'extfront', seq: 4, anim: 'rise' });
     box(g0 + 0.02, D.GL + 0.05, D.FB + 0.08, g1 - 0.02, D.GL + 1.05, D.FB + 0.12, 0x2a2d31, { stage: 'extfront', seq: 5, anim: 'fade' }, { metalness: 0.6 });
     box(g1 + 0.1, D.GL + 0.75, D.FB - 0.05, g1 + 0.45, D.GL + 1.05, D.FB + 0.1, 0x2a2d31, { stage: 'extfront', seq: 5, anim: 'fade' }, { metalness: 0.5 });

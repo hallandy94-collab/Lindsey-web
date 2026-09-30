@@ -363,22 +363,35 @@ export function worker(vest = 0xf6d31c, hat = 0xf5f5f2, pose = 0) {
   return g;
 }
 
-// Car (hatch / SUV mix) from a side profile. Length along +x.
+// Car (sedan / SUV) from side profiles: body to the belt line, glazed cabin, roof. Length along +x.
 export function car(color = 0x8a9aa8, type = 'sedan') {
   const g = new THREE.Group();
-  const P = type === 'suv'
-    ? [[-2.35, 0.35], [-2.4, 0.95], [-2.2, 1.05], [-1.9, 1.62], [0.9, 1.66], [1.55, 1.08], [2.3, 0.95], [2.4, 0.4]]
-    : [[-2.3, 0.35], [-2.35, 0.9], [-2.0, 1.0], [-1.2, 1.42], [0.6, 1.44], [1.35, 0.98], [2.25, 0.85], [2.35, 0.4]];
-  const s = new THREE.Shape(); P.forEach(([x, y], i) => i ? s.lineTo(x, y) : s.moveTo(x, y)); s.closePath();
-  const w = 1.84;
-  const body = mesh(G('car' + type, () => { const e = new THREE.ExtrudeGeometry(s, { depth: w - 0.12, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 3 }); e.translate(0, 0, -(w - 0.12) / 2); return e; }), paint(color, 0.22, 0.6), 0, 0, 0, g);
-  // glasshouse
-  const gy = type === 'suv' ? 1.08 : 1.0;
-  const Q = type === 'suv' ? [[-2.1, gy], [-1.85, 1.56], [0.85, 1.6], [1.45, gy]] : [[-1.9, gy], [-1.15, 1.38], [0.55, 1.4], [1.25, gy]];
-  const s2 = new THREE.Shape(); Q.forEach(([x, y], i) => i ? s2.lineTo(x, y) : s2.moveTo(x, y)); s2.closePath();
-  mesh(G('glass' + type, () => { const e = new THREE.ExtrudeGeometry(s2, { depth: w - 0.02, bevelEnabled: false }); e.translate(0, 0, -(w - 0.02) / 2); return e; }), glassM(), 0, 0.02, 0, g);
-  for (const [x, sd] of [[-1.45, 1], [1.45, 1], [-1.45, -1], [1.45, -1]]) { const wh = wheel(0.34, 0.24, 0x9ca3a8); wh.position.set(x, 0.34, sd * 0.8); g.add(wh); }
-  for (const sd of [-1, 1]) { B(g, 2.33, 0.62, sd * 0.62 - 0.14, 2.42, 0.75, sd * 0.62 + 0.14, lamp()); B(g, -2.42, 0.72, sd * 0.62 - 0.16, -2.34, 0.84, sd * 0.62 + 0.16, lamp(0xb3121b)); }
+  const suv = type === 'suv', belt = suv ? 1.06 : 0.96, top = suv ? 1.7 : 1.44, w = 1.86;
+  const ext = (k, pts, depth, m, y = 0, bev = 0.05) => {
+    const sh = new THREE.Shape(); pts.forEach(([x, yy], i) => i ? sh.lineTo(x, yy) : sh.moveTo(x, yy)); sh.closePath();
+    const geo2 = G(k, () => { const e = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: bev > 0, bevelSize: bev, bevelThickness: bev, bevelSegments: 3, curveSegments: 6 }); e.translate(0, 0, -depth / 2); return e; });
+    return mesh(geo2, m, 0, y, 0, g);
+  };
+  const body = paint(color, 0.18, 0.7);
+  ext('carB' + type, [[-2.3, 0.32], [-2.36, 0.78], [-2.12, belt], [suv ? 1.35 : 1.2, belt], [2.28, suv ? 0.9 : 0.8], [2.38, 0.46], [2.25, 0.32]], w - 0.12, body);
+  const gl = new THREE.MeshStandardMaterial({ color: 0x52636e, roughness: 0.04, metalness: 0.9 });
+  const cab = suv ? [[-2.12, belt], [-2.02, top - 0.04], [0.95, top], [1.55, belt]] : [[-1.95, belt], [-1.2, top - 0.02], [0.55, top], [1.3, belt]];
+  ext('carG' + type, cab, w - 0.34, gl, 0, 0.02);
+  const roof = suv ? [[-2.0, top - 0.06], [0.9, top - 0.02], [0.88, top + 0.03], [-2.0, top - 0.01]] : [[-1.18, top - 0.04], [0.52, top - 0.02], [0.5, top + 0.02], [-1.15, top]];
+  ext('carR' + type, roof, w - 0.3, body, 0, 0.02);
+  // pillars
+  for (const sd of [-1, 1]) for (const [x0, x1] of suv ? [[0.9, 1.55], [-0.45, -0.35], [-2.05, -1.95]] : [[0.5, 1.3], [-0.35, -0.25]])
+    member(g, [x1, belt, sd * (w / 2 - 0.19)], [x0, top - 0.02, sd * (w / 2 - 0.19)], 0.07, body);
+  // wheels in the arches, lights, grille, mirrors
+  for (const [x, sd] of [[-1.42, 1], [1.42, 1], [-1.42, -1], [1.42, -1]]) {
+    const wh = wheel(0.35, 0.24, 0x9ca3a8); wh.position.set(x, 0.35, sd * 0.8); g.add(wh);
+  }
+  for (const sd of [-1, 1]) {
+    B(g, 2.28, 0.66, sd * 0.62 - 0.17, 2.4, 0.76, sd * 0.62 + 0.17, lamp());
+    B(g, -2.42, 0.74, sd * 0.6 - 0.2, -2.33, 0.84, sd * 0.6 + 0.2, lamp(0xb3121b));
+    B(g, 1.25, belt - 0.02, sd * (w / 2 + 0.08) - 0.05, 1.42, belt + 0.1, sd * (w / 2 + 0.08) + 0.05, body);
+  }
+  B(g, 2.36, 0.46, -0.45, 2.42, 0.62, 0.45, paint(0x1a1b1d, 0.4, 0.6));
   return g;
 }
 
@@ -388,13 +401,17 @@ export function tree(scale = 1, seed = 1) {
   let a = seed * 9301 + 49297; const r = () => ((a = (a * 9301 + 49297) % 233280) / 233280);
   const bark = paint(0x5a4636, 0.95, 0), leaf = [0x3b5a2f, 0x46663a, 0x355230, 0x4f6f3c];
   member(g, [0, 0, 0], [0, 2.2 * scale, 0], 0.32 * scale, bark, true);
-  const canG = G('can', () => { const c = new THREE.IcosahedronGeometry(1, 1); const p = c.attributes.position; for (let i = 0; i < p.count; i++) { const k = 0.85 + ((i * 7919) % 97) / 97 * 0.3; p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.75, p.getZ(i) * k); } c.computeVertexNormals(); return c; });
+  const canG = G('can2', () => { const c = new THREE.IcosahedronGeometry(1, 2); const p = c.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i); const k = 0.8 + 0.25 * Math.sin(x * 7.1 + y * 5.3) * Math.cos(z * 6.7 - x * 3.1); p.setXYZ(i, x * k, y * k * 0.8, z * k); } c.computeVertexNormals(); return c; });
+  const lm = [paint(leaf[0], 0.95, 0), paint(leaf[1], 0.95, 0), paint(leaf[2], 0.95, 0)];
   for (let k = 0; k < 5; k++) {
     const ang = r() * Math.PI * 2, len = (1.4 + r()) * scale, top = [Math.cos(ang) * len, (2.2 + 1.4 * r()) * scale + 0.8 * scale, Math.sin(ang) * len];
     member(g, [0, 2.0 * scale, 0], top, 0.14 * scale, bark, true);
-    const cm = mesh(canG, paint(leaf[k % 4], 0.95, 0), top[0], top[1] + 0.5 * scale, top[2], g); cm.scale.setScalar((1.3 + r() * 0.6) * scale);
-    cm.material.flatShading = true;
+    // each branch carries a cluster of smaller leaf masses
+    for (let j = 0; j < 5; j++) {
+      const cm = mesh(canG, lm[(k + j) % 3], top[0] + (r() - 0.5) * 1.4 * scale, top[1] + (0.2 + r() * 0.9) * scale, top[2] + (r() - 0.5) * 1.4 * scale, g);
+      cm.scale.setScalar((0.6 + r() * 0.5) * scale); cm.rotation.y = r() * 6;
+    }
   }
-  const c0 = mesh(canG, paint(leaf[1], 0.95, 0), 0, 4.2 * scale, 0, g); c0.scale.setScalar(2.1 * scale); c0.material.flatShading = true;
+  for (let j = 0; j < 6; j++) { const c0 = mesh(canG, lm[j % 3], (r() - 0.5) * 1.6 * scale, (4.0 + r() * 1.2) * scale, (r() - 0.5) * 1.6 * scale, g); c0.scale.setScalar((0.9 + r() * 0.5) * scale); }
   return g;
 }

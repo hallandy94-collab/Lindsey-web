@@ -74,10 +74,17 @@ function table(p, x, y, z, ry, w, d, h = 0.74, top = F.oak, n = 0) {
 function stool(p, x, y, z) { const g = grp(p, x, y, z); put(g, cyl(0.19, 0.19, 0.05), F.leather(), 0, 0.68, 0); put(g, cyl(0.02, 0.02, 0.66, 8), F.brass(), 0, 0.33, 0); put(g, cyl(0.18, 0.18, 0.02), F.brass(), 0, 0.01, 0); return g; }
 function rug(p, x, y, z, w, d, col = F.rug) { return put(p, rb(w, 0.015, d, 0.005), col(), x, y + 0.028, z); }
 function plant(p, x, y, z, s = 1) {
+  // harakeke (NZ flax) in a planter: long tapering blades fanning out
   const g = grp(p, x, y, z);
-  put(g, cyl(0.2 * s, 0.15 * s, 0.4 * s), F.pot(), 0, 0.2 * s, 0);
-  const lg = new THREE.IcosahedronGeometry(0.34 * s, 1);
-  for (let k = 0; k < 4; k++) { const m = put(g, lg, F.leaf(), Math.cos(k * 1.7) * 0.12 * s, (0.7 + k * 0.25) * s, Math.sin(k * 1.7) * 0.12 * s); m.scale.set(1, 1.3, 1); m.material.flatShading = true; }
+  put(g, cyl(0.24 * s, 0.19 * s, 0.45 * s, 20), F.pot(), 0, 0.225 * s, 0);
+  put(g, cyl(0.22 * s, 0.22 * s, 0.02, 20), M(0x3b2c20, 1), 0, 0.44 * s, 0);
+  const blade = cache.get('blade') || (() => { const sh = new THREE.Shape(); sh.moveTo(-0.035, 0); sh.quadraticCurveTo(-0.03, 0.6, 0, 1); sh.quadraticCurveTo(0.03, 0.6, 0.035, 0); sh.closePath(); const b = new THREE.ShapeGeometry(sh, 6); cache.set('blade', b); return b; })();
+  const bm = M(0x4f6b3a, 0.7, 0, { side: THREE.DoubleSide });
+  for (let k = 0; k < 16; k++) {
+    const a = k * 2.4, len = (0.9 + (k % 5) * 0.12) * s;
+    const m = put(g, blade, bm, 0, 0.44 * s, 0, a); m.scale.set(1.2 * s, len, 1);
+    m.rotation.order = 'YXZ'; m.rotation.x = -(0.12 + (k % 4) * 0.1); m.castShadow = true;
+  }
   return g;
 }
 function pendant(p, x, y, z, drop = 0.9) {

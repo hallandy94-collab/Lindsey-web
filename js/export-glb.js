@@ -19,10 +19,10 @@ export function buildCompleted({ suburb = true, interiors = true } = {}) {
   const bIndex = id => STAGES.findIndex(s => s.id === id);
   const bld = buildModel(bIndex);
   MIRROR.add(bld.root);
-  const hideInHouse = new Set(['fitout', 'services']);
   for (const o of bld.items) {
-    const el = o.userData.el;
-    o.visible = !(el.temp || el.rs != null || o.isSprite || (interiors && hideInHouse.has(STAGES[el.s].id)));
+    const el = o.userData.el, sid = STAGES[el.s].id;
+    const hidden = interiors && (sid === 'fitout' || (sid === 'services' && o.isMesh && [0xd46a3a, 0xb05a24].includes(o.material.color.getHex())) || (sid === 'roof' && el.house != null));
+    o.visible = !(el.temp || el.rs != null || o.isSprite || hidden);
   }
   bld.root.traverse(o => { if (o.isSprite || (o.isMesh && o.material?.isMeshBasicMaterial)) o.visible = false; });
   if (interiors) {

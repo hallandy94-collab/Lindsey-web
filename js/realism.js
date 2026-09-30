@@ -210,11 +210,11 @@ export function setupWorld({ renderer, scene, camera, sun, hemi, target = new TH
   const envSky = new Sky(); envSky.scale.setScalar(100); envSky.material.uniforms.sunPosition.value.copy(dir);
   Object.assign(envSky.material.uniforms.turbidity, { value: 2.6 }); envSky.material.uniforms.rayleigh.value = 1.1;
   envScene.add(envSky);
-  const gnd = new THREE.Mesh(new THREE.CircleGeometry(90, 32), new THREE.MeshBasicMaterial({ color: 0x5d6a4c }));
+  const gnd = new THREE.Mesh(new THREE.CircleGeometry(90, 32), new THREE.MeshBasicMaterial({ color: 0xa89c88 }));   // warm bounce from paving and floors
   gnd.rotation.x = -Math.PI / 2; gnd.position.y = -2; envScene.add(gnd);
   const env = pmrem.fromScene(envScene, 0.02).texture;
   scene.environment = env;
-  scene.environmentIntensity = 0.75;
+  scene.environmentIntensity = 0.62;
 
   // sun: warm, low shadow bias, sized to the site
   sun.color.set(0xfff1dc);
@@ -225,7 +225,7 @@ export function setupWorld({ renderer, scene, camera, sun, hemi, target = new TH
   Object.assign(sun.shadow.camera, { left: -shadowExtent, right: shadowExtent, top: shadowExtent, bottom: -shadowExtent, near: 20, far: 260 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.03;
-  if (hemi) { hemi.intensity = 0.35; hemi.color.set(0xdfe9f5); hemi.groundColor.set(0x6b6152); }
+  if (hemi) { hemi.intensity = 0.55; hemi.color.set(0xfff6ea); hemi.groundColor.set(0xcdbba0); }
 
   scene.fog = new THREE.Fog(0xc9d6df, 260, 1500);
 
@@ -234,7 +234,20 @@ export function setupWorld({ renderer, scene, camera, sun, hemi, target = new TH
   scene.add(world);
 
   // animated pool water
-  const tick = t => { if (waterNormals) { waterNormals.offset.x = t * 0.00002; waterNormals.offset.y = t * 0.000013; } };
+  // follow: keep a tight, high-resolution shadow map around the camera (walkthrough)
+  const tick = (t, followCam) => {
+    if (waterNormals) { waterNormals.offset.x = t * 0.00002; waterNormals.offset.y = t * 0.000013; }
+    if (followCam) {
+      // at eye level a tight box around the camera; from the air the whole site
+      const p = followCam.position, aerial = p.y > 22, ext = aerial ? 70 : shadowExtent, snap = aerial ? 5 : 0.5;
+      const c = aerial ? target : p;
+      sun.target.position.set(Math.round(c.x / snap) * snap, aerial ? 0 : Math.round(c.y / snap) * snap, Math.round(c.z / snap) * snap);
+      sun.position.copy(sun.target.position).addScaledVector(dir, 120);
+      sun.target.updateMatrixWorld();
+      const sc = sun.shadow.camera;
+      if (sc.right !== ext) { Object.assign(sc, { left: -ext, right: ext, top: ext, bottom: -ext }); sc.updateProjectionMatrix(); }
+    }
+  };
   return { sky, world, tick, sunDir: dir };
 }
 
