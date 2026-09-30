@@ -35,7 +35,7 @@ const toW = a => [-a[0], a[1], a[2]];
 realify(root);
 const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-3.6, 0, 11), suburb: false, shadowSize: 2048, shadowExtent: 26 });
 { // ground at the street level around the house (LG is 0.86 m above the street)
-  const g = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.MeshStandardMaterial({ color: 0x9fb088, roughness: 1 }));
+  const g = new THREE.Mesh(new THREE.CircleGeometry(400, 64), new THREE.MeshStandardMaterial({ color: 0x7f9163, roughness: 1 }));
   g.rotation.x = -Math.PI / 2; g.position.y = -0.9; g.receiveShadow = true; scene.add(g);
 }
 const roof = shell.getObjectByName('roof');
@@ -96,6 +96,7 @@ const setEm = (el, on, glow) => {
 const levelTop = { all: 99, LG: 2.6, L1: 3.23 + 2.6, L2: 6.46 + 2.6 };
 
 function update(time) {
+  for (const c of context.children) if (c.name === 'neighbour') c.visible = explodeAmt < 0.05;
   const t = state.t, cs = Math.min(Math.floor(t), N - 1);
   const commOn = t >= stageIndex('comm') + 0.6;
   for (const o of items) {
@@ -358,6 +359,6 @@ function setT(t) {
   if (i !== camStage) { camStage = i; if (state.autoCam) goView(FIT_STAGES[i].view, true); explodeAmt = explodeTarget; }
   state.playing = false; state.playTo = null; state.t = t; updateReadout();
 }
-window.__fo = { draw: () => { window.__hold = true; const now = performance.now();
+window.__fo = { draw: () => { window.__hold = true; const now = performance.now(); explodeAmt = explodeTarget; if (tween) { camera.position.copy(tween.to.pos); controls.target.copy(tween.to.tgt); tween = null; }
   controls.update(); update(now); world.tick(now);
   renderer.render(scene, camera); }, state, jumpTo, setHouse, goView, setT, N, cam: ([p, t]) => { tween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };

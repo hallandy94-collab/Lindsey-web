@@ -172,7 +172,7 @@ export function buildModel(stageIndex) {
   // reserve trees
   for (const [x, z, k] of [[-42, -28, 1], [-36, -46, 2], [64, -27, 6], [72, -42, 7], [54, -52, 8]]) { const t = MX.tree(1.5, k); t.position.set(x, D.GL, z); context.add(t); }
   // cars parked along the far side of Goldie St
-  [[-20, 0x2c2f33], [-6, 0xe8e8e6], [9, 0x5a1f1f], [26, 0x8a9aa8, 'suv'], [41, 0x1f2f45], [58, 0xd0d2d4, 'suv']].forEach(([x, c, t]) => { const v = MX.car(c, t); v.position.set(x, D.GL - 0.04, ST.road + 1.2); context.add(v); });
+  [[-22, 0x2c2f33], [-12, 0xe8e8e6], [52, 0x5a1f1f], [60, 0x8a9aa8, 'suv'], [70, 0x1f2f45], [80, 0xd0d2d4, 'suv']].forEach(([x, c, t]) => { const v = MX.car(c, t); v.position.set(x, D.GL - 0.04, ST.road + 1.2); context.add(v); });
   const lbl = makeFlatLabel('GOLDIE STREET', 1.6); lbl.position.set(22.3, D.GL - 0.02, -15.6); context.add(lbl);
   const lbl2 = makeFlatLabel('VELLENOWETH GREEN', 1.4); lbl2.position.set(22.3, D.GL + 0.06, -30); context.add(lbl2);
   const north = makeFlatLabel('← NORTH', 1.2); north.position.set(-6, D.GL - 0.02, -13.2); context.add(north);
@@ -671,7 +671,8 @@ export function buildModel(stageIndex) {
   // ------------------------------------------------------------- 24 services & lifts (house flow-line)
   for (let h = 0; h < 5; h++) {
     const [a, b, c, d] = inHouse(h, [LIFT.x0, LIFT.z0, LIFT.x1, LIFT.z1]);
-    box(a, D.L0, b, c, D.ROOF - 0.4, d, MAT.lift, { stage: 'services', seq: h * 3 + 2, house: h, anim: 'rise' }, { transparent: true, opacity: 0.7, metalness: 0.4 });
+    box(a, D.L0, b, c, D.ROOF - 0.4, d, MAT.precast, { stage: 'services', seq: h * 3 + 2, house: h, anim: 'rise' });
+    box(a - 0.02, D.L0, b + 0.15, a, D.L0 + 2.1, d - 0.15, 0xb7bec5, { stage: 'services', seq: h * 3 + 2.5, house: h, anim: 'fade' }, { metalness: 0.8, roughness: 0.25 }); // lift doors at L0
     for (const y of [D.L1 - 0.6, D.L2 - 0.6, D.ROOF - 0.7])
       box(HF(h) + 2.55, y, 1, HF(h) + 3.05, y + 0.3, D.HD2 - 1.5, MAT.duct2, { stage: 'services', seq: h * 3, house: h, anim: 'fade' });
     cyl(HF(h) + 5.9, D.L0, 11.95, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);

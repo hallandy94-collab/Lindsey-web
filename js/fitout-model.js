@@ -203,6 +203,7 @@ export function buildHouse(stageIndex) {
   context.add(box(1.1, -1.4, 21.7, 6.1, -0.06, 24.6, COL.water, null, { transparent: true, opacity: 0.8, roughness: 0.1 }));
   for (const dx of [-7.4, 7.4]) {
     const n = box(dx + (dx < 0 ? 0.15 : 0), -0.275, 0, dx + W, ROOF_Y, DEPTH, 0xd9d5cc, null, { transparent: true, opacity: 0.18, depthWrite: false });
+    n.name = 'neighbour';
     context.add(n);
   }
 
@@ -398,7 +399,7 @@ export function buildHouse(stageIndex) {
       if (r.wc) { const [wx, wz] = r.wc; box(wx - 0.18, y + 0.3, wz - 0.25, wx + 0.18, y + 0.42, wz + 0.25, COL.sanitary, { stage: 'fitoff', seq: li * 6 + k, level: li }, { roughness: 0.2 }); }
       for (const b of [r.basin, r.basin2].filter(Boolean)) box(b[0] - 0.25, y + 0.83, b[1] - 0.18, b[0] + 0.25, y + 0.95, b[1] + 0.18, COL.sanitary, { stage: 'fitoff', seq: li * 6 + k, level: li }, { roughness: 0.2 });
       if (r.bath) box(r.bath[0], y + 0.06, r.bath[1], r.bath[2], y + 0.6, r.bath[3], COL.sanitary, { stage: 'fitoff', seq: li * 6 + k + 1, level: li }, { roughness: 0.2 });
-      if (r.shower) box(r.shower[0], y + 0.06, r.shower[1], r.shower[0] + 0.012, y + 2.1, r.shower[3], COL.balustrade, { stage: 'fitoff', seq: li * 6 + k + 1, level: li }, { transparent: true, opacity: 0.35, roughness: 0.05 });
+      if (r.shower) box(r.shower[0] + 0.1, y + 0.06, r.shower[1], r.shower[2] - 0.5, y + 2.1, r.shower[1] + 0.012, COL.balustrade, { stage: 'fitoff', seq: li * 6 + k + 1, level: li }, { transparent: true, opacity: 0.35, roughness: 0.05 });
     });
     if (l.id === 'L1') {
       box(0.63, y + 0.6, 11.1, 0.66, y + 1.5, 11.7, COL.appliance, { stage: 'fitoff', seq: 20 }, { roughness: 0.3, metalness: 0.5 }); // ovens

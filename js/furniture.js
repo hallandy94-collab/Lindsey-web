@@ -148,10 +148,17 @@ export function furnishHouse(root, h = 0) {
   rug(g, 3.4, y2, 2.4, 3.0, 2.8, F.rug);
   art(g, 7.23, y2 + 1.6, 2.4, -Math.PI / 2, 1.0, 1.2, tint);
   sheer(g, 0.2, 7.05, y2, 0.3);
+  // ensuite styling: mirror over the twin vanity, charcoal feature tile behind the shower and bath, towels
+  put(g, rb(2.3, 0.9, 0.02, 0.005), M(0xd9e2e6, 0.02, 1), 1.6, y2 + 1.55, 4.72);
+  put(g, rb(2.34, 0.94, 0.015, 0.005), F.black(), 1.6, y2 + 1.55, 4.705);
+  put(g, rb(0.012, 2.5, 1.8, 0.002), M(0x4b4a47, 0.35), 0.1, y2 + 1.3, 8.05);
+  put(g, rb(1.7, 1.3, 0.012, 0.002), M(0x4b4a47, 0.35), 2.65, y2 + 0.72, 8.9);
+  for (const x of [3.3, 3.45]) put(g, rb(0.06, 0.55, 0.45, 0.02), M(0xefece5, 1), 3.5, y2 + 1.0, 5.4 + (x - 3.3) * 4);
+  put(g, cyl(0.012, 0.012, 1.0, 8), F.brass(), 3.55, y2 + 1.25, 5.8).rotation.x = Math.PI / 2;
+  plant(g, 0.45, y2, 6.6, 0.6);
   bed(g, 2.4, y2, 13.1, Math.PI / 2, 1.2, 2.0);                   // bed 2
   plant(g, 5.8, y2, 13.6, 0.9);
   lounger(g, 2.2, y2, 16.1, Math.PI / 2); lounger(g, 3.3, y2 + 0.001, 16.1, Math.PI / 2);
-  umbrella(g, 5.6, y2, 16.2);
   for (const x of [0.6, 6.7]) plant(g, x, y2, 17.3, 1.1);
   return g;
 }

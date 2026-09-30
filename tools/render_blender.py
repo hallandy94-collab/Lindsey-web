@@ -97,18 +97,19 @@ SUNS = {
 
 # Cameras in glTF/world coordinates. 'vertical': keep verticals vertical (level camera + shift_y).
 SHOTS = {
-    'street_hero': dict(cam=(-22.3, 5.35, -30.0), target=(-22.3, 9.0, 0.0), lens=22, sun='hero', vertical=True,
-                        desc='Across Goldie Street from Vellenoweth Green reserve, eye level, whole 5-house frontage'),
-    'street_oblique': dict(cam=(8.0, 5.4, -16.0), target=(-20.0, 8.5, 6.0), lens=24, sun='hero', vertical=True,
+    'street_hero': dict(cam=(-6.0, 5.35, -31.0), target=(-19.0, 9.0, 0.0), lens=24, sun='hero', vertical=True, exposure=0.35,
+                        desc='Across Goldie Street from Vellenoweth Green reserve, eye level, the whole 5-house frontage'),
+    'street_oblique': dict(cam=(8.0, 5.4, -16.0), target=(-20.0, 8.5, 6.0), lens=24, sun='hero', vertical=True, exposure=0.35,
                            desc='North-west corner of Goldie Street, eye level, oblique along the frontage'),
-    'aerial': dict(cam=(-70.0, 40.0, -40.0), target=(-22.0, 5.0, 12.0), lens=35, sun='hero', vertical=False,
+    'aerial': dict(cam=(-70.0, 40.0, -40.0), target=(-22.0, 5.0, 12.0), lens=35, sun='hero', vertical=False, exposure=0.25,
                    desc='Drone view from the south-west'),
     'pool_court': dict(cam=(-23.6, 6.2, 25.9), target=(-21.6, 7.4, 17.0), lens=20, sun='morning', vertical=True,
-                       desc="House 3 rear pool court on the podium, eye level, looking west at the rear facade and pool"),
-    'rear_evening': dict(cam=(-10.0, 16.0, 34.0), target=(-22.0, 7.0, 16.0), lens=26, sun='evening', vertical=False,
-                         lights=True, desc='Rear pool courts from above, evening'),
-    'interior_living': dict(cam=(-15.5, 9.4, 9.5), target=(-14.5, 9.2, 0.0), lens=18, sun='hero', vertical=True,
-                            exposure=1.6, desc='House 2 L1 living, looking west to the street glazing'),
+                       emission=0.8, exposure=0.7, desc="House 3 rear pool court on the podium, eye level, looking west at the rear facade and pool"),
+    'rear_evening': dict(cam=(-8.0, 15.0, 36.0), target=(-24.0, 5.5, 19.0), lens=26, sun='evening', vertical=False,
+                         emission=4.0, exposure=1.2, desc='Rear pool courts from above, evening, interior lights on'),
+    'interior_living': dict(cam=(-16.2, 9.45, 12.0), target=(-14.2, 9.2, 0.0), lens=18, sun='hero', vertical=True,
+                            exposure=3.0, emission=1.2, diffuse_bounces=6,
+                            desc='House 2 L1 living and dining, looking west to the street glazing'),
 }
 SHOT_ORDER = ['street_hero', 'street_oblique', 'aerial', 'pool_court', 'rear_evening', 'interior_living']
 
@@ -424,7 +425,7 @@ def build_flat(col, rough, metal, alpha, emit_col, emit_str, hexc):
         p.inputs['Coat Weight'].default_value = 1.0
         p.inputs['Coat Roughness'].default_value = 0.03
     elif g > r * 1.15 and g > b * 1.15 and rough >= 0.85:   # foliage
-        return build_leaf(col, 0.55, 'leaf_' + hexc)
+        return build_leaf(col, 0.55, 'leaf_' + hexc, big=True)
     p.inputs['Base Color'].default_value = col
     p.inputs['Metallic'].default_value = metal
     # small, per-surface roughness / specular drift so flat colours don't read as CG plastic
@@ -474,20 +475,20 @@ def principled_of(mat):
 def upgrade_materials():
     parse_surf_js()
     cache, report = {}, {}
+    old = set(bpy.data.materials)
     glass, water = build_glass(), build_water()
     suburb = {
         'canopy': build_leaf((0.05, 0.11, 0.035, 1), 0.7, 'canopy', big=True),
         'walls': build_palette('suburbWall', [0xf2efe8, 0xe8e2d6, 0xdcd8d0, 0xf5f3ee, 0xcfd3d4, 0xe9e1d0], 0.85),
         'roofs': build_palette('suburbRoof', [0x3d4247, 0x5b5f63, 0x7a4b3a, 0x2f3a45, 0x8b8f93], 0.5, 0.4),
     }
-    old = set(bpy.data.materials)
     for o in bpy.data.objects:
         if o.type != 'MESH':
             continue
         inst = o.data.users > 50
         for slot in o.material_slots:
             mat = slot.material
-            if mat is None or mat not in old:
+            if mat is None or mat not in old or mat.name.startswith('PBR_'):
                 continue
             base = re.sub(r'\.\d+$', '', mat.name)
             bs = principled_of(mat)
@@ -812,13 +813,13 @@ def place_camera(sc, shot, aspect):
     return co
 
 
-def set_emission(on):
+def set_emission(mult):
     for m in bpy.data.materials:
         if 'emissive' not in m:
             continue
         for nd in m.node_tree.nodes:
             if nd.type == 'BSDF_PRINCIPLED':
-                nd.inputs['Emission Strength'].default_value = m['emissive'] * (4.0 if on else 1.0)
+                nd.inputs['Emission Strength'].default_value = m['emissive'] * mult
 
 
 # ----------------------------------------------------------------------------- scene
@@ -971,7 +972,8 @@ def main():
         t0 = time.time()
         co = place_camera(sc, sh, res[0] / res[1])
         rgb, strength = aim_sun(sky, sun, sh['sun'])
-        set_emission(sh.get('lights', False))
+        set_emission(sh.get('emission', 1.0))
+        sc.cycles.diffuse_bounces = sh.get('diffuse_bounces', 3)
         sc.view_settings.exposure = sh.get('exposure', 0.0)
         if grass:
             aim_grass(grass, co.location, sh.get('grass_radius', 22.0), a.grass_density)
