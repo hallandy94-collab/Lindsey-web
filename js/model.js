@@ -2,29 +2,46 @@
 // Every element is tagged with the stage it is built in (and, for temporary
 // works, the stage it is removed in) so the sequencer can animate it.
 //
-// Axes: x runs along Goldie Street (north 0 → south 30.18), z runs east
-// away from the street, y is RL in metres. Massing is derived from the pack
-// quantities (30.18 m frontage, 769 m² L0 plate, 670 / 525 m² L1 / L2
-// plates, RLs from the methodology). It is indicative, not the HAL design.
+// Set out to HAL AD-06 / AD-10 Rev D (Vellenoweth Green Residences):
+//   x runs along Goldie Street from grid 1 (north, x = 0) to grid 8 (south, x = 44.6):
+//     3.8 exit-ramp bay · 5 houses × 7.4 m (grids 2–7) · 3.8 entry-ramp bay.
+//   z runs away from the street from grid G (building front, z = 0) to grid A (z = 26.5):
+//     G–F 1.1 · F–E 9.8 · E–D 5.5 · D–C 1.5 (houses G–C = 17.9) · C–B 2.0 terrace · B–A 6.6 pools.
+//   Front boundary z = −2.6, rear boundary z = 27.58 (site 45.27 × 30.18 m = 1,364 m²).
+//   y is RL in metres (methodology RLs).
+// The basement fills grid 1–8 × A–G. Houses, pools and levels are to the drawings; the
+// fitout inside the houses is indicative.
 
 import * as THREE from 'three';
-import { rectMinus, STAIR_HOLE } from './fitout-model.js';
+import { rectMinus, STAIR_HOLE, BSTAIR_HOLE, LIFT } from './fitout-model.js';
 
 export const DIM = {
-  W: 30.18,          // frontage
-  BD: 25.5,          // basement depth (769 m² / 30.18)
-  SITE_D: 45.2,      // site depth (1,364 m² / 30.18)
-  HD1: 22.2,         // LG / L1 house depth (670 m² / 30.18)
-  HD2: 17.4,         // L2 house depth (525 m² / 30.18)
-  GL: 3.75,          // existing ground / street
+  W: 44.6,           // grid 1 → 8 (basement / secant line)
+  BD: 26.5,          // basement depth, grid G → A
+  HD1: 17.9,         // LG / L1 house depth (670 m² / 37 m), grid G → C
+  HD2: 14.2,         // L2 house depth (525 m² / 37 m)
+  FB: -2.6, RB: 27.58, SX0: -0.335, SX1: 44.935,   // site boundaries
+  GL: 3.75,          // street / existing ground
   FORM: 1.32,        // basement formation
   L0: 1.82,          // top of L0 slab
   LG: 4.61, L1: 7.84, L2: 11.07, ROOF: 14.1,
   PLANK: 0.2, TOP: 0.075,
-  RAMP_W: 3.6, RAMP_L: 12,
+  RAMP_W: 3.2, RAMP_Z1: 10.9,     // ramps run from the boundary down to grid E
+  HW: 7.4, HX0: 3.8,
 };
 const D = DIM;
-const HOUSE_W = D.W / 5;
+export const houseX = h => D.HX0 + D.HW * h;          // party-wall centre line on the north side of house h
+const HX = houseX, HC = h => HX(h) + D.HW / 2;
+const HF = h => HX(h) + 0.075;                          // clear face of house h's north party wall (fitout origin)
+// ramp strips (x) and the ramp surface level at z
+const RAMPS = [[0.45, 0.45 + D.RAMP_W], [D.W - 0.45 - D.RAMP_W, D.W - 0.45]];
+const rampY = z => D.GL - Math.min(1, Math.max(0, (z - D.FB) / (D.RAMP_Z1 - D.FB))) * (D.GL - D.L0);
+// pool shells (3 × 5 m), per house, in the B–A zone
+const POOL = h => [HX(h) + 1.2, 21.65, HX(h) + 6.2, 24.65];
+// street (z from the front boundary out): footpath, berm, drive-in bays, kerb, carriageway
+const ST = { fp: -4.2, berm: -5.2, bay: -10.2, kerb: -10.5, road: -18.5 };
+const CZ = (ST.berm + ST.bay) / 2;                      // crane standing line in the bays
+const LANE = (ST.kerb + ST.road) / 2 + 2;               // near traffic lane (HPMV stands here)
 
 export const MAT = {
   soil: 0x7c5e40, soilDeep: 0x5f4630, gravel: 0x9a948a, precast: 0xc2beb4, insitu: 0xaeaba3,
@@ -35,7 +52,7 @@ export const MAT = {
   ww: 0xb05a24, sw: 0x2f8a55, duct: 0x2a6fd1, water: 0x46b3d6, grass: 0x7fa35a, road: 0x4a4d52,
   path: 0xb9b6ad, kerb: 0xd0cdc5, neighbour: 0xd9d4ca, roofN: 0x8e8a84, reserve: 0x8fb46a,
   aggregate: 0x5b5a57, lift: 0x7f95a8, duct2: 0xd46a3a, fit: 0xf3e9d8, tree: 0x4f7a3a, trunk: 0x6b4f35,
-  office: 0xe8e2d0, balustrade: 0xbfe3ee, door: 0x6d7379,
+  office: 0xe8e2d0, balustrade: 0xbfe3ee, door: 0x6d7379, block: 0xc7c1b4,
 };
 
 // ---------------------------------------------------------------------------
@@ -93,52 +110,68 @@ export function buildModel(stageIndex) {
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vb.clone().sub(va).normalize());
     return add(m, o);
   }
+  // sloped slab between two z stations (e.g. ramps, stair flights)
+  function slope(x0, x1, zA, yA, zB, yB, t, color, o) {
+    const len = Math.hypot(zB - zA, yB - yA);
+    const m = new THREE.Mesh(boxGeo(x1 - x0, t, len), mat(color));
+    m.position.set((x0 + x1) / 2, (yA + yB) / 2 - t / 2, (zA + zB) / 2);
+    m.rotation.x = -Math.atan2(yB - yA, zB - zA);
+    return add(m, o);
+  }
+  // house-local rectangle [x0, z0, x1, z1] → world
+  const inHouse = (h, [a, b, c, d]) => [HF(h) + a, b, HF(h) + c, d];
 
   // ------------------------------------------------------------- context
   // Ground mass around the basement hole, cut by the section plane too.
   const gb = -4;
-  const X0 = -45, X1 = 75, Z0 = -40, Z1 = 75;
+  const X0 = -50, X1 = 95, Z0 = -55, Z1 = 75;
   const soilM = { roughness: 1 };
-  staticBox(ground, X0, gb, D.SITE_D, X1, D.GL, Z1, MAT.soil, soilM);            // behind site
-  staticBox(ground, X0, gb, 0, 0, D.GL, D.SITE_D, MAT.soil, soilM);              // north
-  staticBox(ground, D.W, gb, 0, X1, D.GL, D.SITE_D, MAT.soil, soilM);            // south
-  // east garden, with the five pool pits cut out
-  for (const [a, b, c, d] of rectMinus([0, D.BD, D.W, D.SITE_D], [0, 1, 2, 3, 4].map(h => { const cx = D.W / 5 * (h + 0.5); return [cx - 1.5, 30, cx + 1.5, 35]; })))
-    staticBox(ground, a, gb, b, c, D.GL, d, MAT.soil, soilM);
-  for (let h = 0; h < 5; h++) { const cx = D.W / 5 * (h + 0.5); staticBox(ground, cx - 1.5, gb, 30, cx + 1.5, D.GL - 1.6, 35, MAT.soil, soilM); }
-  staticBox(ground, X0, gb, Z0, X1, D.GL - 0.02, 0, MAT.soil, soilM);            // under street
-  staticBox(ground, 0, gb, 0, D.W, D.FORM, D.BD, MAT.soilDeep, soilM);           // below formation
-  // surface finishes
-  staticBox(context, X0, D.GL - 0.02, -2.6, X1, D.GL + 0.02, 0, MAT.path).userData.surface = true;       // footpath
-  staticBox(context, X0, D.GL - 0.02, -3.0, X1, D.GL + 0.1, -2.6, MAT.kerb).userData.surface = true;     // kerb
-  // Goldie Street: drive-in (nose-in) parking bays along the frontage (z −8 → −3), then the carriageway
-  staticBox(context, X0, D.GL - 0.04, -8.0, X1, D.GL, -3.0, 0x55585d).userData.surface = true;            // drive-in parking bays
-  staticBox(context, X0, D.GL - 0.04, -16.0, X1, D.GL, -8.0, MAT.road).userData.surface = true;          // carriageway
-  staticBox(context, X0, D.GL - 0.02, Z0, X1, D.GL + 0.04, -16.0, MAT.reserve);  // Vellenoweth Green
-  staticBox(context, X0, D.GL, 0, -0.4, D.GL + 0.03, Z1, MAT.grass);             // neighbour lawns
-  staticBox(context, D.W + 0.4, D.GL, 0, X1, D.GL + 0.03, Z1, MAT.grass);
-  staticBox(context, -0.4, D.GL, D.SITE_D, D.W + 0.4, D.GL + 0.03, Z1, MAT.grass);
-  // road markings
-  for (let x = X0 + 2; x < X1; x += 6) staticBox(context, x, D.GL + 0.001, -12.1, x + 3, D.GL + 0.012, -11.95, 0xf2f2ee);
-  // existing drive-in bay lines (faded) – 2.5 m bays, 5 m deep
-  for (let x = -14; x <= 44; x += 2.5) staticBox(context, x, D.GL + 0.001, -8.0, x + 0.1, D.GL + 0.008, -3.2, 0xb9bcbf);
-  staticBox(context, -14, D.GL + 0.001, -8.05, 44.1, D.GL + 0.008, -7.95, 0xb9bcbf);
-  // neighbours No. 8 (north) and No. 16 (south)
-  const neighbour = (x0, x1, label) => {
-    staticBox(context, x0, D.GL, 6, x1, D.GL + 6, 20, MAT.neighbour);
-    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 8.2, 3.2, 4, 1), mat(MAT.roofN));
-    roof.rotation.y = Math.PI / 4; roof.scale.set((x1 - x0) / 11.6, 1, 14 / 11.6);
-    roof.position.set((x0 + x1) / 2, D.GL + 6 + 1.6, 13); roof.castShadow = true;
+  staticBox(ground, X0, gb, D.BD, X1, D.GL, Z1, MAT.soil, soilM);                 // behind the basement
+  staticBox(ground, X0, gb, 0, 0, D.GL, D.BD, MAT.soil, soilM);                    // north
+  staticBox(ground, D.W, gb, 0, X1, D.GL, D.BD, MAT.soil, soilM);                  // south
+  staticBox(ground, X0, gb, Z0, X1, D.GL - 0.02, D.FB, MAT.soil, soilM);           // under the street
+  // front yard, cut by the two ramps
+  staticBox(ground, X0, gb, D.FB, RAMPS[0][0], D.GL, 0, MAT.soil, soilM);
+  staticBox(ground, RAMPS[0][1], gb, D.FB, RAMPS[1][0], D.GL, 0, MAT.soil, soilM);
+  staticBox(ground, RAMPS[1][1], gb, D.FB, X1, D.GL, 0, MAT.soil, soilM);
+  for (const [a, b] of RAMPS) staticBox(ground, a, gb, D.FB, b, rampY(0) - 0.2, 0, MAT.soil, soilM);
+  staticBox(ground, 0, gb, 0, D.W, D.FORM, D.BD, MAT.soilDeep, soilM);             // below formation
+  // surface finishes: footpath, berm, drive-in bays, kerb, carriageway, reserve
+  const surf = (x0, y0, z0, x1, y1, z1, c) => { staticBox(context, x0, y0, z0, x1, y1, z1, c).userData.surface = true; };
+  surf(X0, D.GL - 0.02, ST.fp, X1, D.GL + 0.02, D.FB, MAT.path);
+  surf(X0, D.GL - 0.02, ST.berm, X1, D.GL + 0.03, ST.fp, MAT.grass);
+  surf(X0, D.GL - 0.04, ST.bay, X1, D.GL, ST.berm, 0x6b6e72);                        // concrete drive-in parking bays
+  surf(X0, D.GL - 0.04, ST.kerb, X1, D.GL + 0.1, ST.bay, MAT.kerb);
+  surf(X0, D.GL - 0.08, ST.road, X1, D.GL - 0.04, ST.kerb, MAT.road);
+  staticBox(context, X0, D.GL - 0.08, Z0, X1, D.GL + 0.04, ST.road - 2.5, MAT.reserve); // Vellenoweth Green
+  staticBox(context, X0, D.GL - 0.08, ST.road - 2.5, X1, D.GL + 0.1, ST.road, MAT.kerb);
+  staticBox(context, X0, D.GL, D.FB, D.SX0 - 0.05, D.GL + 0.03, Z1, MAT.grass);       // neighbour lawns
+  staticBox(context, D.SX1 + 0.05, D.GL, D.FB, X1, D.GL + 0.03, Z1, MAT.grass);
+  staticBox(context, D.SX0 - 0.05, D.GL, D.RB + 0.05, D.SX1 + 0.05, D.GL + 0.03, Z1, MAT.grass);
+  // road centre line
+  for (let x = X0 + 2; x < X1; x += 6) staticBox(context, x, D.GL - 0.039, (ST.kerb + ST.road) / 2 - 0.08, x + 3, D.GL - 0.03, (ST.kerb + ST.road) / 2 + 0.08, 0xf2f2ee);
+  // existing drive-in bay lines (faded) – 2.5 m bays, clear of the two vehicle crossings
+  const crossing = x => (x > RAMPS[0][0] - 1.4 && x < RAMPS[0][1] + 1.4) || (x > RAMPS[1][0] - 1.4 && x < RAMPS[1][1] + 1.4);
+  for (let x = -16; x <= 60; x += 2.5) if (!crossing(x)) staticBox(context, x, D.GL + 0.001, ST.bay + 0.1, x + 0.1, D.GL + 0.008, ST.berm - 0.2, 0xc4c6c8);
+  // neighbours: No. 8 Goldie St (north), No. 16 (south), and Maheke St / Polygon Rd behind
+  const neighbour = (x0, x1, z0, z1, h, label) => {
+    staticBox(context, x0, D.GL, z0, x1, D.GL + h, z1, MAT.neighbour);
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 8.2, 3.0, 4, 1), mat(MAT.roofN));
+    roof.rotation.y = Math.PI / 4; roof.scale.set((x1 - x0) / 11.6, 1, (z1 - z0) / 11.6);
+    roof.position.set((x0 + x1) / 2, D.GL + h + 1.5, (z0 + z1) / 2); roof.castShadow = true;
     context.add(roof);
-    const g = makeLabel(label); g.position.set((x0 + x1) / 2, D.GL + 12, 13); context.add(g);
+    if (label) { const g = makeLabel(label); g.position.set((x0 + x1) / 2, D.GL + h + 5.5, (z0 + z1) / 2); context.add(g); }
   };
-  neighbour(-15, -3, 'No. 8');
-  neighbour(D.W + 3, D.W + 15, 'No. 16');
+  neighbour(-16, -3.5, 1, 15, 6, 'No. 8');
+  neighbour(D.SX1 + 3, D.SX1 + 14, 2, 16, 6, 'No. 16');
+  neighbour(1, 12, 35, 46, 5.2, null);          // Maheke St / Polygon Rd houses behind
+  neighbour(15, 25, 36, 46, 5.2, null);
+  neighbour(31, 43, 35, 46, 5.2, null);
   // reserve trees
-  for (const [x, z] of [[-18, -21], [-8, -32], [40, -22], [50, -30], [-30, -26], [62, -23]]) tree(context, x, D.GL, z, 1.3);
-  const lbl = makeFlatLabel('GOLDIE STREET', 1.6); lbl.position.set(15, D.GL + 0.03, -13.6); context.add(lbl);
-  const lbl2 = makeFlatLabel('VELLENOWETH GREEN', 1.4); lbl2.position.set(15, D.GL + 0.06, -26); context.add(lbl2);
-  const north = makeFlatLabel('NORTH →', 1.2); north.position.set(-8, D.GL + 0.03, -10.2); context.add(north);
+  for (const [x, z] of [[-18, -26], [-8, -36], [40, -27], [52, -34], [-30, -30], [64, -27], [20, -40]]) tree(context, x, D.GL, z, 1.3);
+  const lbl = makeFlatLabel('GOLDIE STREET', 1.6); lbl.position.set(22.3, D.GL - 0.02, -15.6); context.add(lbl);
+  const lbl2 = makeFlatLabel('VELLENOWETH GREEN', 1.4); lbl2.position.set(22.3, D.GL + 0.06, -30); context.add(lbl2);
+  const north = makeFlatLabel('← NORTH', 1.2); north.position.set(-6, D.GL - 0.02, -13.2); context.add(north);
 
   function tree(parent, x, y, z, s) {
     const g = new THREE.Group();
@@ -154,62 +187,62 @@ export function buildModel(stageIndex) {
   const fenceH = 1.8;
   const fenceRun = (x0, z0, x1, z1) => box(Math.min(x0, x1) - 0.03, D.GL, Math.min(z0, z1) - 0.03, Math.max(x0, x1) + 0.03, D.GL + fenceH, Math.max(z0, z1) + 0.03, MAT.fence,
     { stage: 'est', seq: 0, anim: 'rise', rm: 'extfront', rmSeq: 0, temp: true }, { transparent: true, opacity: 0.4 });
-  fenceRun(-0.3, -0.3, 5, -0.3); fenceRun(9, -0.3, 21, -0.3); fenceRun(25.2, -0.3, D.W + 0.3, -0.3);
-  fenceRun(-0.3, -0.3, -0.3, D.SITE_D); fenceRun(D.W + 0.3, -0.3, D.W + 0.3, D.SITE_D); fenceRun(-0.3, D.SITE_D, D.W + 0.3, D.SITE_D);
-  // site office & amenities (east garden)
-  for (let i = 0; i < 3; i++) box(20 + i * 3.2, D.GL, 38, 22.8 + i * 3.2, D.GL + 2.7, 44, MAT.office, { stage: 'est', seq: 1, rm: 'extslab', rmSeq: 1, temp: true });
-  box(20, D.GL + 2.7, 38, 23, D.GL + 5.3, 44, MAT.office, { stage: 'est', seq: 2, rm: 'extslab', rmSeq: 1, temp: true });
+  // boundary hoarding with the north exit gate (grid 1–2) and the south entry gate (grid 7–8)
+  fenceRun(RAMPS[0][1] + 0.3, D.FB, RAMPS[1][0] - 0.3, D.FB);
+  fenceRun(D.SX0, D.FB, D.SX0, D.RB); fenceRun(D.SX1, D.FB, D.SX1, D.RB); fenceRun(D.SX0, D.RB, D.SX1, D.RB);
+  // site office & amenities: two-storey cabins in the north end of the works zone
+  for (let i = 0; i < 3; i++) box(-12.4 + i * 2.6, D.GL, ST.bay + 0.4, -10 + i * 2.6, D.GL + 2.7, ST.berm - 0.4, MAT.office, { stage: 'est', seq: 1, rm: 'extfront', rmSeq: 7, temp: true });
+  box(-12.4, D.GL + 2.7, ST.bay + 0.4, -7.4, D.GL + 5.3, ST.berm - 0.4, MAT.office, { stage: 'est', seq: 2, rm: 'extfront', rmSeq: 7, temp: true });
   // wheel-wash at the north exit
-  box(0.5, D.GL, -0.2, 4.5, D.GL + 0.25, 3.5, 0x6f7b85, { stage: 'est', seq: 2, rm: 'ramps', temp: true });
+  box(RAMPS[0][0], D.GL, D.FB - 1.4, RAMPS[0][1], D.GL + 0.25, D.FB + 1.2, 0x6f7b85, { stage: 'est', seq: 2, rm: 'ramps', temp: true });
   // silt fence along the frontage
-  box(-0.2, D.GL, 0.3, D.W + 0.2, D.GL + 0.6, 0.4, 0x1d1f22, { stage: 'est', seq: 1, anim: 'rise', rm: 'dig', temp: true });
+  box(D.SX0, D.GL, D.FB + 0.3, D.SX1, D.GL + 0.6, D.FB + 0.4, 0x1d1f22, { stage: 'est', seq: 1, anim: 'rise', rm: 'dig', temp: true });
   // piling platform
   box(0, D.GL, 0, D.W, D.GL + 0.3, D.BD, MAT.gravel, { stage: 'est', seq: 3, anim: 'rise', rm: 'dig', rmSeq: 0, rmAnim: 'fade', temp: true, soil: true });
 
   // ------------------------------------------------------------- Goldie St works zone (TMP)
   // The drive-in bays along the frontage are taken as the construction works zone for
   // crane standings, deliveries/unloading and skips, and handed back re-marked at the end.
-  const WZ0 = -1.5, WZ1 = D.W + 1.5;
+  const WZ0 = -13, WZ1 = D.W + 2;
   // barriers along the carriageway edge of the bays, with openings for trucks to pull in
   for (let x = WZ0; x < WZ1; x += 1.9) {
-    if ((x > 6 && x < 12.5) || (x > 17 && x < 23)) continue;
+    if ((x > 8 && x < 14.5) || (x > 27 && x < 33)) continue;
     const b = new THREE.Group();
     const body = new THREE.Mesh(boxGeo(1.8, 0.8, 0.4), mat((Math.round((x - WZ0) / 1.9) % 2) ? 0xf2f2ee : 0xe8591a, { roughness: 0.6 }));
-    body.position.set(x + 0.9, D.GL + 0.4, -8.2); b.add(body);
+    body.position.set(x + 0.9, D.GL + 0.4, ST.bay - 0.05); b.add(body);
     add(b, { stage: 'est', seq: 4, anim: 'rise', rm: 'extfront', rmSeq: 8, temp: true });
   }
-  // end barriers across the bays
-  for (const x of [WZ0, WZ1]) box(x - 0.2, D.GL, -8.0, x + 0.2, D.GL + 0.8, -3.3, 0xe8591a, { stage: 'est', seq: 4, anim: 'rise', rm: 'extfront', rmSeq: 8, temp: true });
-  { const w = makeFlatLabel('WORKS ZONE · TMP', 0.9); w.position.set(26, D.GL + 0.03, -7.2);
+  for (const x of [WZ0, WZ1]) box(x - 0.2, D.GL, ST.bay, x + 0.2, D.GL + 0.8, ST.berm - 0.2, 0xe8591a, { stage: 'est', seq: 4, anim: 'rise', rm: 'extfront', rmSeq: 8, temp: true });
+  { const w = makeFlatLabel('WORKS ZONE · TMP', 0.9); w.position.set(36, D.GL + 0.03, ST.bay + 0.8);
     add(w, { stage: 'est', seq: 4, anim: 'fade', rm: 'extfront', rmSeq: 8, temp: true }); }
   // skips in the bays: muck/demo skip early, fitout skips later
   const skip = (x, color, o) => {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(boxGeo(2.0, 1.3, 3.8), mat(color, { roughness: 0.7, metalness: 0.3 })); body.position.set(x, D.GL + 0.65, -5.4);
-    const load = new THREE.Mesh(boxGeo(1.8, 0.2, 3.5), mat(0x8a8176, { roughness: 1 })); load.position.set(x, D.GL + 1.2, -5.4);
+    const body = new THREE.Mesh(boxGeo(2.0, 1.3, 3.8), mat(color, { roughness: 0.7, metalness: 0.3 })); body.position.set(x, D.GL + 0.65, CZ);
+    const load = new THREE.Mesh(boxGeo(1.8, 0.2, 3.5), mat(0x8a8176, { roughness: 1 })); load.position.set(x, D.GL + 1.2, CZ);
     g.add(body, load);
     return add(g, o);
   };
-  skip(0.3, 0xd9a21b, { stage: 'est', seq: 5, anim: 'drop', rm: 'roof', rmSeq: 5, temp: true });
-  skip(27.8, 0x2f6fb0, { stage: 'membrane', seq: 8, anim: 'drop', rm: 'extfront', rmSeq: 8, temp: true });
-  skip(1.2, 0x2f6fb0, { stage: 'facade', seq: 20, anim: 'drop', rm: 'extfront', rmSeq: 8, temp: true });
-  // timber crane mats at the 130 t standing in the bays
+  skip(-4.5, 0xd9a21b, { stage: 'est', seq: 5, anim: 'drop', rm: 'roof', rmSeq: 5, temp: true });
+  skip(38.5, 0x2f6fb0, { stage: 'membrane', seq: 8, anim: 'drop', rm: 'extfront', rmSeq: 8, temp: true });
+  skip(-2, 0x2f6fb0, { stage: 'facade', seq: 20, anim: 'drop', rm: 'extfront', rmSeq: 8, temp: true });
+  // timber crane mats at each planned standing in the bays
   const mats = (cx, stage, rm) => {
     for (const [dx, dz] of [[-4, 2.2], [-4, -2.2], [3, 2.2], [3, -2.2]])
-      box(cx + dx - 0.6, D.GL, -5.5 + dz - 0.6, cx + dx + 0.6, D.GL + 0.15, -5.5 + dz + 0.6, 0x8b6a45, { stage, seq: -1, anim: 'fade', rm, rmSeq: 100, temp: true });
+      box(cx + dx - 0.6, D.GL, CZ + dz - 0.6, cx + dx + 0.6, D.GL + 0.15, CZ + dz + 0.6, 0x8b6a45, { stage, seq: -1, anim: 'fade', rm, rmSeq: 100, temp: true });
   };
-  mats(15, 'pools', 'pools');
-  for (const x of [6, 8, 15, 22, 24]) mats(x, 'lg', 'l2');
+  for (const x of [13, 31]) mats(x, 'pools', 'pools');
+  for (const x of [10, 22.3, 34.6]) mats(x, 'lg', 'l2');
   // footpath closed and pedestrians escorted past during lift windows (never a load over the public)
-  for (const x of [-1.6, D.W + 1.6]) box(x - 0.2, D.GL, -2.6, x + 0.2, D.GL + 1.0, 0, 0xe8591a, { stage: 'lg', seq: -1, anim: 'rise', rm: 'l2', rmSeq: 100, temp: true });
-  { const f = makeFlatLabel('FOOTPATH CLOSED IN LIFT WINDOWS', 0.7); f.position.set(15, D.GL + 0.05, -1.3);
+  for (const x of [-1.6, D.W + 1.6]) box(x - 0.2, D.GL, ST.fp, x + 0.2, D.GL + 1.0, D.FB, 0xe8591a, { stage: 'lg', seq: -1, anim: 'rise', rm: 'l2', rmSeq: 100, temp: true });
+  { const f = makeFlatLabel('FOOTPATH CLOSED IN LIFT WINDOWS', 0.7); f.position.set(22.3, D.GL + 0.05, (ST.fp + D.FB) / 2);
     add(f, { stage: 'lg', seq: -1, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true }); }
   // lane closure for the HPMV standing in the traffic lane while its load is lifted
-  for (let x = -3; x < 16; x += 2.5) {
-    const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 8), mat(0xff6a13)); c.position.set(x, D.GL + 0.35, -12.4);
+  for (let x = 2; x < 26; x += 2.5) {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 8), mat(0xff6a13)); c.position.set(x, D.GL + 0.3, LANE - 2.2);
     add(c, { stage: 'lg', seq: -1, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true });
   }
-  // HPMV precast delivery parked in the unloading bay during the panel & plank windows
+  // HPMV precast delivery parked in the traffic lane during the panel & plank windows
   const hpmv = new THREE.Group();
   { const cab = new THREE.Mesh(boxGeo(2.6, 3.0, 2.5), mat(0xc0392b)); cab.position.set(-0.2, 1.8, 0);
     const deckT = new THREE.Mesh(boxGeo(13, 0.3, 2.5), mat(0x2d3034)); deckT.position.set(7.6, 1.2, 0);
@@ -218,25 +251,25 @@ export function buildModel(stageIndex) {
     for (let k = 0; k < 3; k++) { const p = new THREE.Mesh(boxGeo(7.4, 0.2, 2.4), mat(0xc8c4ba)); p.position.set(9, 1.45 + k * 0.22, 0); hpmv.add(p); }
     for (const x of [-0.8, 5.2, 11.2, 12.4]) for (const z of [-1.1, 1.1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.35, 14), mat(0x1c1c1c)); w.rotation.x = Math.PI / 2; w.position.set(x, 0.5, z); hpmv.add(w); }
     hpmv.traverse(c => { if (c.isMesh) c.castShadow = true; }); }
-  hpmv.position.set(-0.5, D.GL, -10.3);
+  hpmv.position.set(8, D.GL - 0.04, LANE);
   add(hpmv, { stage: 'lg', seq: 0, anim: 'fade', rm: 'l2', rmSeq: 100, temp: true });
   // fitout / facade delivery truck at the unloading bay
-  const deliv = makeTruck(0xf0f2f4); deliv.position.set(9.5, D.GL, -5.3);
+  const deliv = makeTruck(0xf0f2f4); deliv.position.set(11.5, D.GL, CZ);
   add(deliv, { stage: 'joinery', seq: 0, anim: 'fade', rm: 'fitout', rmSeq: 100, temp: true });
 
   // ------------------------------------------------------------- 2 secant piles
-  // perimeter: front (z=0) with ramp mouths, sides, back (z=BD)
+  // perimeter on grid 1–8 × A–G, less the two ramp mouths on grid G
   const pilePts = [];
   const spacing = 0.75;
-  const pushLine = (ax, az, bx, bz, skip) => {
+  const pushLine = (ax, az, bx, bz, skipFn) => {
     const len = Math.hypot(bx - ax, bz - az), n = Math.round(len / spacing);
     for (let i = 0; i < n; i++) {
       const t = i / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t;
-      if (skip && skip(x, z)) continue;
+      if (skipFn && skipFn(x, z)) continue;
       pilePts.push([x, z]);
     }
   };
-  const inMouth = (x, z) => z < 0.5 && ((x > 0.1 && x < 0.3 + D.RAMP_W + 0.2) || (x > D.W - 0.3 - D.RAMP_W - 0.2 && x < D.W - 0.1));
+  const inMouth = (x, z) => z < 0.5 && ((x > 0.1 && x < RAMPS[0][1] + 0.1) || (x > RAMPS[1][0] - 0.1 && x < D.W - 0.1));
   pushLine(0, 0, D.W, 0, inMouth);
   pushLine(D.W, 0, D.W, D.BD);
   pushLine(D.W, D.BD, 0, D.BD);
@@ -259,36 +292,36 @@ export function buildModel(stageIndex) {
   rig.userData.el.rigPath = pilePts;
 
   // ------------------------------------------------------------- 3 public WW/SW re-route
-  const pz = -6, pz2 = -8.2, py = D.GL - 1.8;
-  pipe([-8, py, pz], [37, py, pz], 0.09, MAT.ww, { stage: 'reroute', seq: 0, anim: 'fade' });
-  pipe([-8, py + 0.3, pz2], [27, py + 0.3, pz2], 0.12, MAT.sw, { stage: 'reroute', seq: 1, anim: 'fade' });
-  for (const [x, z, c] of [[2, pz, MAT.ww], [28, pz, MAT.ww], [15, pz2, MAT.sw]])
+  const pzW = (ST.berm + ST.fp) / 2, pzS = ST.berm - 1.2, py = D.GL - 1.8;
+  pipe([-12, py, pzW], [33, py, pzW], 0.09, MAT.ww, { stage: 'reroute', seq: 0, anim: 'fade' });
+  pipe([-8, py + 0.3, pzS], [27, py + 0.3, pzS], 0.12, MAT.sw, { stage: 'reroute', seq: 1, anim: 'fade' });
+  for (const [x, z, c] of [[-10, pzW, MAT.ww], [15, pzW, MAT.ww], [24, pzS, MAT.sw]])
     cyl(x, py - 0.3, z, 0.55, D.GL - py + 0.35, c, { stage: 'reroute', seq: 2, anim: 'rise' }, 16);
-  // traffic management cones
-  for (let x = -6; x < 36; x += 3) {
+  for (let x = -10; x < 36; x += 3) {
     const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 8), mat(0xff6a13));
-    c.position.set(x, D.GL + 0.35, -4.6);
+    c.position.set(x, D.GL + 0.35, ST.bay + 0.3);
     add(c, { stage: 'reroute', seq: 0, anim: 'fade', rm: 'reroute', rmSeq: 99, temp: true });
   }
 
   // ------------------------------------------------------------- 4 bulk excavation
-  // soil plug inside the wall, removed in 3 lifts × 5 bays
+  // soil plug inside the wall, removed in 3 lifts × 6 bays (ramp mouths first)
   const lifts = [[D.GL - 0.8, D.GL], [D.GL - 1.6, D.GL - 0.8], [D.FORM, D.GL - 1.6]];
+  const NB = 6;
   lifts.forEach(([y0, y1], li) => {
-    for (let b = 0; b < 5; b++) {
-      const x0 = 0.3 + b * (D.W - 0.6) / 5, x1 = 0.3 + (b + 1) * (D.W - 0.6) / 5;
-      box(x0, y0, 0.3, x1, y1, D.BD - 0.3, MAT.soil, { stage: 'est', seq: -1, anim: 'none', rm: 'dig', rmSeq: li * 5 + (b % 2 ? 4 - b : b), rmAnim: 'dig', soil: true }, { roughness: 1 });
+    for (let b = 0; b < NB; b++) {
+      const x0 = 0.3 + b * (D.W - 0.6) / NB, x1 = 0.3 + (b + 1) * (D.W - 0.6) / NB;
+      const order = [0, 5, 1, 4, 2, 3].indexOf(b);
+      box(x0, y0, 0.3, x1, y1, D.BD - 0.3, MAT.soil, { stage: 'est', seq: -1, anim: 'none', rm: 'dig', rmSeq: li * NB + order, rmAnim: 'dig', soil: true }, { roughness: 1 });
     }
   });
-  // excavator + truck
   const excavator = new THREE.Group();
   { const t = new THREE.Mesh(boxGeo(3.2, 0.8, 2.6), mat(0x2b2d31)); t.position.y = 0.4;
     const b = new THREE.Mesh(boxGeo(2.6, 1.4, 2.2), mat(MAT.crane)); b.position.y = 1.5;
     const arm = new THREE.Mesh(boxGeo(5, 0.35, 0.35), mat(MAT.crane)); arm.position.set(3, 2.4, 0); arm.rotation.z = -0.35;
     [t, b, arm].forEach(p => { p.castShadow = true; excavator.add(p); }); }
-  excavator.position.set(14, D.FORM, 12);
+  excavator.position.set(22, D.FORM, 13);
   add(excavator, { stage: 'dig', seq: 0, anim: 'fade', rm: 'drain', rmSeq: 0, temp: true });
-  const truck = makeTruck(MAT.truck); truck.position.set(8, D.GL, -10); truck.rotation.y = Math.PI / 2;
+  const truck = makeTruck(MAT.truck); truck.position.set(8, D.GL - 0.04, LANE);
   add(truck, { stage: 'dig', seq: 0, anim: 'fade', rm: 'dig', rmSeq: 99, temp: true });
   truck.userData.el.drive = true;
 
@@ -303,33 +336,26 @@ export function buildModel(stageIndex) {
 
   // ------------------------------------------------------------- 5 capping beam & shotcrete
   const cb = [D.GL - 0.35, D.GL + 0.1];
-  // front beam stops at the two ramp mouths
-  box(0.3 + D.RAMP_W + 0.4, cb[0], -0.3, D.W - 0.7 - D.RAMP_W, cb[1], 0.3, MAT.insitu, { stage: 'capping', seq: 0, anim: 'rise' });
+  const FM0 = RAMPS[0][1] + 0.1, FM1 = RAMPS[1][0] - 0.1;   // front wall between the ramp mouths
+  box(FM0, cb[0], -0.3, FM1, cb[1], 0.3, MAT.insitu, { stage: 'capping', seq: 0, anim: 'rise' });
   box(D.W - 0.3, cb[0], -0.3, D.W + 0.3, cb[1], D.BD + 0.3, MAT.insitu, { stage: 'capping', seq: 1, anim: 'rise' });
   box(-0.3, cb[0], D.BD - 0.3, D.W + 0.3, cb[1], D.BD + 0.3, MAT.insitu, { stage: 'capping', seq: 2, anim: 'rise' });
   box(-0.3, cb[0], -0.3, 0.3, cb[1], D.BD + 0.3, MAT.insitu, { stage: 'capping', seq: 3, anim: 'rise' });
-  // shotcrete facing on inner face (walls)
   const sh = 0.1, fy0 = D.FORM, fy1 = D.GL - 0.35;
   box(D.W - 0.3 - sh, fy0, 0.3, D.W - 0.3, fy1, D.BD - 0.3, MAT.shot, { stage: 'capping', seq: 4, anim: 'rise' });
   box(0.3, fy0, D.BD - 0.3 - sh, D.W - 0.3, fy1, D.BD - 0.3, MAT.shot, { stage: 'capping', seq: 5, anim: 'rise' });
   box(0.3, fy0, 0.3, 0.3 + sh, fy1, D.BD - 0.3, MAT.shot, { stage: 'capping', seq: 6, anim: 'rise' });
-  box(0.3 + D.RAMP_W + 0.4, fy0, 0.3, D.W - 0.7 - D.RAMP_W, fy1, 0.3 + sh, MAT.shot, { stage: 'capping', seq: 7, anim: 'rise' });
+  box(FM0, fy0, 0.3, FM1, fy1, 0.3 + sh, MAT.shot, { stage: 'capping', seq: 7, anim: 'rise' });
 
   // ------------------------------------------------------------- 6 private drainage
   const dy = D.FORM - 0.25;
-  for (let h = 0; h < 5; h++) {
-    const x = HOUSE_W * (h + 0.5);
-    pipe([x, dy, 3], [x, dy - 0.2, D.BD - 2], 0.06, MAT.ww, { stage: 'drain', seq: h });
-  }
+  for (let h = 0; h < 5; h++) pipe([HC(h), dy, 3], [HC(h), dy - 0.2, D.BD - 2], 0.06, MAT.ww, { stage: 'drain', seq: h });
   pipe([2, dy - 0.25, D.BD - 2], [D.W - 2, dy - 0.3, D.BD - 2], 0.08, MAT.ww, { stage: 'drain', seq: 5 });
   pipe([1, dy, 1], [D.W - 1, dy, 1], 0.1, MAT.sw, { stage: 'drain', seq: 6 });
-  // herringbone subsoil
   for (let x = 2; x < D.W - 1; x += 3) pipe([x, dy + 0.1, 1.2], [x + 1.5, dy + 0.1, D.BD - 1.2], 0.05, 0x2d2d2d, { stage: 'drain', seq: 7 });
-  // sumps
   for (const [x, z] of [[1.5, D.BD - 1.5], [D.W - 1.5, D.BD - 1.5]]) cyl(x, D.FORM - 1.2, z, 0.6, 1.4, 0x5d6166, { stage: 'drain', seq: 8, anim: 'rise' });
 
   // ------------------------------------------------------------- 7 tanking, XPS, hardfill
-  // Stack from formation up. Each layer is tagged so "explode" can separate them.
   const tk = [
     ['Sand blinding 50', MAT.blinding, D.FORM, D.FORM + 0.05, 0],
     ['Nuraply 3PTM membrane', MAT.membrane, D.FORM + 0.05, D.FORM + 0.07, 1],
@@ -342,289 +368,293 @@ export function buildModel(stageIndex) {
     const m = box(tIn, y0, tIn, D.W - tIn, y1, D.BD - tIn, c, { stage: 'tank', seq: k, anim: 'rise', layer: k }, { roughness: k === 1 ? 0.55 : 0.95 });
     m.name = name;
   });
-  // wall 3PG + Nuradrain on shotcrete face
   const wm = (x0, z0, x1, z1, s) => box(x0, D.FORM, z0, x1, D.GL - 0.55, z1, MAT.wallMembrane, { stage: 'tank', seq: 5 + s, anim: 'rise', layer: 5 });
   const wd = (x0, z0, x1, z1, s) => box(x0, D.FORM, z0, x1, D.GL - 0.55, z1, MAT.drainBoard, { stage: 'tank', seq: 7 + s, anim: 'rise', layer: 6 });
   const f = 0.3 + sh;
-  wm(D.W - f - 0.02, f, D.W - f, D.BD - f, 0); wm(f, D.BD - f - 0.02, D.W - f, D.BD - f, 0); wm(f, f, f + 0.02, D.BD - f, 0);
-  wd(D.W - f - 0.06, f, D.W - f - 0.02, D.BD - f, 0); wd(f, D.BD - f - 0.06, D.W - f, D.BD - f - 0.02, 0); wd(f + 0.02, f, f + 0.06, D.BD - f, 0);
+  wm(D.W - f - 0.02, f, D.W - f, D.BD - f, 0); wm(f, D.BD - f - 0.02, D.W - f, D.BD - f, 0); wm(f, f, f + 0.02, D.BD - f, 0); wm(FM0, f, FM1, f + 0.02, 0);
+  wd(D.W - f - 0.06, f, D.W - f - 0.02, D.BD - f, 0); wd(f, D.BD - f - 0.06, D.W - f, D.BD - f - 0.02, 0); wd(f + 0.02, f, f + 0.06, D.BD - f, 0); wd(FM0, f + 0.02, FM1, f + 0.06, 0);
 
   // ------------------------------------------------------------- 8 footings, lift pits, L0 slab
   const slabB = D.FORM + 0.31;
-  for (let i = 0; i <= 5; i++) {
-    const x = i * HOUSE_W, xc = Math.min(Math.max(x, 0.6), D.W - 0.6);
-    box(xc - 0.35, slabB - 0.35, 0.6, xc + 0.35, slabB, D.BD - 0.6, MAT.insitu, { stage: 'slab', seq: 0, anim: 'rise' });
-  }
+  for (let i = 0; i <= 5; i++) box(HX(i) - 0.35, slabB - 0.35, 0.6, HX(i) + 0.35, slabB, D.BD - 0.6, MAT.insitu, { stage: 'slab', seq: 0, anim: 'rise' });
   for (let h = 0; h < 5; h++) {
-    const x = HOUSE_W * h + HOUSE_W - 1.6;
-    box(x - 0.8, slabB - 1.1, 15.5, x + 0.8, D.L0, 17.1, MAT.insitu, { stage: 'slab', seq: 1, anim: 'rise' });
+    const [a, b, c, d] = inHouse(h, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, LIFT.x1 + 0.15, LIFT.z1 + 0.15]);
+    box(a, slabB - 1.1, b, c, D.L0, d, MAT.insitu, { stage: 'slab', seq: 1, anim: 'rise' });
   }
-  // 4 pour zones, grid lines across the length
-  const zones = [[0.4, 7.6], [7.6, 15.1], [15.1, 22.6], [22.6, D.W - 0.4]];
-  zones.forEach(([x0, x1], i) => box(x0, slabB, 0.4, x1, D.L0, D.BD - 0.4, 0xb6b3ab, { stage: 'slab', seq: 2 + i, anim: 'rise' }, { roughness: 0.55 }));
-  // boom pump on the street
-  const pump = makePump(); pump.position.set(15, D.GL, -5);
+  // 4 pours (AD-10: Pour 1 grid 1–3, Pours 2 + 3 grid 3–5, Pour 4 grid 5–8), less the ramps
+  const rampRects = RAMPS.map(([a, b]) => [a - 0.05, -1, b + 0.05, D.RAMP_Z1]);
+  [[0.4, HX(1)], [HX(1), HX(2)], [HX(2), HX(3)], [HX(3), D.W - 0.4]].forEach(([x0, x1], i) => {
+    for (const [a, b, c, d] of rectMinus([x0, 0.4, x1, D.BD - 0.4], rampRects))
+      box(a, slabB, b, c, D.L0, d, 0xb6b3ab, { stage: 'slab', seq: 2 + i, anim: 'rise' }, { roughness: 0.55 });
+  });
+  const pump = makePump(); pump.position.set(22.3, D.GL, CZ);
   add(pump, { stage: 'slab', seq: 2, anim: 'fade', rm: 'ramps', rmSeq: 99, temp: true });
 
   function makePump() {
-    // truck on the street, boom reaching over the site
     const g = makeTruck(0xe0e3e6);
-    g.rotation.y = 0;
-    const pts = [[1, 3.2, 0], [1, 12, 7], [1, 9, 17], [1, 3, 20]];
+    const pts = [[1, 3.2, 0], [1, 12, 8], [1, 10, 17], [1, 3, 21]];
     for (let k = 0; k < pts.length - 1; k++) {
       const a = new THREE.Vector3(...pts[k]), b = new THREE.Vector3(...pts[k + 1]);
       const seg = new THREE.Mesh(boxGeo(0.35, 0.35, a.distanceTo(b)), mat(k === 2 ? 0x333333 : 0xd23c2a));
       seg.position.copy(a).add(b).multiplyScalar(0.5);
-      seg.lookAt(b.clone().add(g.position));
       seg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize());
       seg.castShadow = true; g.add(seg);
     }
     return g;
   }
 
-  // ------------------------------------------------------------- 9 incoming ducts
+  // ------------------------------------------------------------- 9 incoming ducts (AD-06: trench near grid 6)
   const dcY = D.GL - 0.9;
   [[0x2a6fd1, 0], [0x2a6fd1, 0.25], [0x3aa0d8, 0.5], [0xe0b000, 0.75], [0x6a6a6a, 1.0]].forEach(([c, o], i) =>
-    pipe([18 + o, dcY, -10], [18 + o, dcY, 0.4], 0.05, c, { stage: 'ducts', seq: i }));
+    pipe([32.4 + o, dcY, ST.road + 2], [32.4 + o, dcY, 0.4], 0.05, c, { stage: 'ducts', seq: i }));
 
   // ------------------------------------------------------------- 10 ramps & flank walls
-  const ramp = (xa, xb, seq) => {
-    const g = new THREE.Mesh(boxGeo(xb - xa, 0.18, Math.hypot(D.RAMP_L, D.GL - D.L0)), mat(0xa4a19a));
-    g.position.set((xa + xb) / 2, (D.GL + D.L0) / 2 - 0.09, D.RAMP_L / 2);
-    g.rotation.x = Math.atan2(D.GL - D.L0, D.RAMP_L);
-    add(g, { stage: 'ramps', seq, anim: 'fade' });
-    // flank wall on the inner side
-    const inner = xa < D.W / 2 ? xb : xa - 0.2;
-    box(inner, D.L0, 0.4, inner + 0.2, D.GL + 0.4, D.RAMP_L, MAT.insitu, { stage: 'ramps', seq: seq + 1, anim: 'rise' });
-  };
-  ramp(0.4, 0.4 + D.RAMP_W, 0);
-  ramp(D.W - 0.4 - D.RAMP_W, D.W - 0.4, 2);
-  // ACO channels at ramp feet
-  box(0.4, D.L0, D.RAMP_L, 0.4 + D.RAMP_W, D.L0 + 0.05, D.RAMP_L + 0.3, 0x444b52, { stage: 'ramps', seq: 4 });
-  box(D.W - 0.4 - D.RAMP_W, D.L0, D.RAMP_L, D.W - 0.4, D.L0 + 0.05, D.RAMP_L + 0.3, 0x444b52, { stage: 'ramps', seq: 4 });
+  // Exit ramp (north, grid 1–2) and entry ramp (south, grid 7–8) are open to the sky in the side
+  // yards, falling from the boundary at the street level to the L0 slab at grid E.
+  RAMPS.forEach(([a, b], k) => {
+    slope(a, b, D.FB, D.GL, D.RAMP_Z1, D.L0, 0.18, 0xa4a19a, { stage: 'ramps', seq: k * 2, anim: 'fade' });
+    // short insitu retaining flanks in the front yard, where the ramp leaves the pile line
+    for (const x of [a - 0.2, b]) box(x, rampY(0) - 0.3, D.FB, x + 0.2, D.GL + 0.3, 0.3, MAT.insitu, { stage: 'ramps', seq: k * 2 + 1, anim: 'rise' });
+    box(a, D.L0, D.RAMP_Z1, b, D.L0 + 0.05, D.RAMP_Z1 + 0.3, 0x444b52, { stage: 'ramps', seq: 4 }); // ACO channel at the foot
+  });
 
-  // ------------------------------------------------------------- props (LG, L1, L2)
-  const props = (yBot, yTop, depth, stage, rm, seqBase, skipAt) => {
+  // ------------------------------------------------------------- props
+  const props = (yBot, yTop, x0, z0, x1, z1, stage, rm, seqBase, skipAt) => {
     let k = 0;
-    for (let x = 1.8; x < D.W - 1; x += 3.6) for (let z = 1.8; z < depth - 1; z += 3.7) {
+    for (let x = x0 + 1.5; x < x1 - 0.8; x += 3.6) for (let z = z0 + 1.6; z < z1 - 0.8; z += 3.7) {
       if (skipAt && skipAt(x, z)) continue;
-      if (yBot === D.L0 && ((x < 0.4 + D.RAMP_W + 0.3 && z < D.RAMP_L) || (x > D.W - 0.7 - D.RAMP_W && z < D.RAMP_L))) continue;
       cyl(x, yBot, z, 0.05, yTop - yBot, MAT.prop, { stage, seq: seqBase + (k++ % 6) * 0.01, anim: 'rise', rm, rmSeq: k, temp: true, layer: 'prop' }, 6);
     }
   };
+  const inside = (x, z, [a, b, c, d], m = 0) => x > a - m && x < c + m && z > b - m && z < d + m;
 
-  // ------------------------------------------------------------- 11 undercroft walls & stairs
+  // ------------------------------------------------------------- 11 undercroft walls, columns & stairs
   const lgSoffit = D.LG - D.TOP - D.PLANK;
-  for (let i = 1; i <= 4; i++) {
-    const x = i * HOUSE_W;
-    for (let s = 0; s < 5; s++) {
-      const z0 = D.RAMP_L + 0.6 + s * (D.BD - D.RAMP_L - 1.2) / 5, z1 = z0 + (D.BD - D.RAMP_L - 1.2) / 5 - 0.05;
-      box(x - 0.075, D.L0, z0, x + 0.075, lgSoffit, z1, MAT.precast, { stage: 'undercroft', seq: i * 5 + s });
-    }
+  // precast walls on grids 2–7 from G to E (red on AD-10): 6 lines × 4 panels
+  for (let i = 0; i <= 5; i++) for (let s = 0; s < 4; s++) {
+    const z0 = 0.3 + s * (D.RAMP_Z1 - 0.3) / 4, z1 = z0 + (D.RAMP_Z1 - 0.3) / 4 - 0.04;
+    box(HX(i) - 0.075, D.L0, z0, HX(i) + 0.075, lgSoffit, z1, MAT.precast, { stage: 'undercroft', seq: i * 4 + s });
   }
-  // plant / bin room walls
-  box(12, D.L0, D.BD - 5, 12.15, lgSoffit, D.BD - 0.5, MAT.precast, { stage: 'undercroft', seq: 30 });
-  box(18, D.L0, D.BD - 5, 18.15, lgSoffit, D.BD - 0.5, MAT.precast, { stage: 'undercroft', seq: 31 });
+  // columns and downstand beams on the grid lines behind grid E carry the LG slab over the aisle,
+  // third spaces and storage (2.1 m clear under the beams)
+  for (let i = 0; i <= 5; i++) {
+    for (const z of [16.4, 19.9, 23.2]) box(HX(i) - 0.18, D.L0, z - 0.18, HX(i) + 0.18, lgSoffit - 0.35, z + 0.18, MAT.insitu, { stage: 'undercroft', seq: 30 + i, anim: 'rise' });
+    box(HX(i) - 0.15, lgSoffit - 0.35, D.RAMP_Z1, HX(i) + 0.15, lgSoffit, D.BD - 0.4, MAT.insitu, { stage: 'undercroft', seq: 36 + i, anim: 'rise' });
+  }
+  // storage / plant / bin store walls (blockwork): per-house storage behind grid B, House 1
+  // storage in grid 1–2, services plant room grid 7–8 A–B, bin store grid 7–8 B–C
+  for (let h = 0; h < 5; h++) {
+    box(HX(h) + 0.2, D.L0, 19.9 - 0.1, HX(h) + 5.4, lgSoffit - 0.35, 19.9 + 0.1, MAT.block, { stage: 'undercroft', seq: 42 + h, anim: 'rise' });
+    box(HX(h) + 6.4, D.L0, 19.9 - 0.1, HX(h + 1) - 0.2, lgSoffit - 0.35, 19.9 + 0.1, MAT.block, { stage: 'undercroft', seq: 42 + h, anim: 'rise' });
+  }
+  box(0.4, D.L0, 17.8, 2.4, lgSoffit, 18.0, MAT.block, { stage: 'undercroft', seq: 47, anim: 'rise' });
+  box(RAMPS[1][0], D.L0, 19.8, D.W - 1.6, lgSoffit, 20.0, MAT.block, { stage: 'undercroft', seq: 47, anim: 'rise' });
+  box(RAMPS[1][0], D.L0, 17.8, D.W - 1.6, lgSoffit, 18.0, MAT.block, { stage: 'undercroft', seq: 47, anim: 'rise' });
   // painted internal wall lining to the basement perimeter (over the Nuradrain board)
   { const fi = 0.3 + 0.1 + 0.07, t = 0.15, top = lgSoffit - 0.05, col = 0xd8d6cf;
-    box(D.W - fi - t, D.L0, D.RAMP_L + 0.3, D.W - fi, top, D.BD - fi, col, { stage: 'undercroft', seq: 32, anim: 'rise' });
-    box(fi, D.L0, D.BD - fi - t, D.W - fi, top, D.BD - fi, col, { stage: 'undercroft', seq: 32, anim: 'rise' });
-    box(fi, D.L0, D.RAMP_L + 0.3, fi + t, top, D.BD - fi, col, { stage: 'undercroft', seq: 32, anim: 'rise' });
-    box(0.4 + D.RAMP_W + 0.2, D.L0, fi, D.W - 0.6 - D.RAMP_W, top, fi + t, col, { stage: 'undercroft', seq: 32, anim: 'rise' }); }
-  // stairs – one per house, sloped
+    box(D.W - fi - t, D.L0, D.RAMP_Z1, D.W - fi, top, D.BD - fi, col, { stage: 'undercroft', seq: 48, anim: 'rise' });
+    box(fi, D.L0, D.BD - fi - t, D.W - fi, top, D.BD - fi, col, { stage: 'undercroft', seq: 48, anim: 'rise' });
+    box(fi, D.L0, D.RAMP_Z1, fi + t, top, D.BD - fi, col, { stage: 'undercroft', seq: 48, anim: 'rise' });
+    box(FM0, D.L0, fi, FM1, top, fi + t, col, { stage: 'undercroft', seq: 48, anim: 'rise' }); }
+  // precast basement stair flights, one per house, along the south party wall (L0 at z 7.8 → LG at z 3.3)
   for (let h = 0; h < 5; h++) {
-    const x = HOUSE_W * h + 1.4, run = 4.2, rise = lgSoffit - D.L0 + 0.1;
-    const st = new THREE.Mesh(boxGeo(1.1, 0.25, Math.hypot(run, rise)), mat(MAT.precast));
-    st.position.set(x, D.L0 + rise / 2, 19 + run / 2);
-    st.rotation.x = -Math.atan2(rise, run);
-    add(st, { stage: 'undercroft', seq: 40 + h });
+    const [a, , c] = inHouse(h, BSTAIR_HOLE);
+    slope(a + 0.03, c - 0.03, BSTAIR_HOLE[1], D.LG, 7.8, D.L0, 0.25, MAT.precast, { stage: 'undercroft', seq: 50 + h });
   }
-  // 55 t AT drives down the south ramp onto the L0 slab (mats), erects the undercroft panels
-  // from the north end first and retreats south, backing out up the ramp as the walls close in
-  const crane55a = makeCrane(0.75, 12); crane55a.position.set(7, D.L0, 16);
+  // 55 t AT drives down the SOUTH (entry) ramp onto the L0 slab (mats), stands in the aisle and
+  // erects the undercroft panels from the north end first, retreating south and backing out up the ramp
+  const crane55a = makeCrane(0.75, 12); crane55a.position.set(8, D.L0, 14);
   add(crane55a, { stage: 'undercroft', seq: 0, anim: 'fade', rm: 'undercroft', rmSeq: 99, temp: true });
-  crane55a.userData.el.setups = { undercroft: [[7, 16], [12, 15], [17, 14], [22, 12.5], [27.2, 13]] };
-  crane55a.userData.el.slew = [15, 18];
+  crane55a.userData.el.setups = { undercroft: [[8, 14], [15, 14], [22.3, 14], [29.6, 14], [36.5, 14], [42.5, 8]] };
+  crane55a.userData.el.slew = [22.3, 5];
 
   // ------------------------------------------------------------- 12 pools
+  // Precast shells hang from the podium into the storage zone (the dashed outlines on AD-10),
+  // bedded on insitu plinth walls off the L0 slab. Top of shell = podium level.
   for (let h = 0; h < 5; h++) {
-    const cx = HOUSE_W * (h + 0.5);
-    const pit = box(cx - 1.8, D.GL - 1.9, 29.4, cx + 1.8, D.GL - 1.6, 35.6, MAT.gravel, { stage: 'pools', seq: h * 2, anim: 'rise' });
-    pit.name = 'Pool bedding';
-    // shell: base + 4 walls
+    const [px0, pz0, px1, pz1] = POOL(h), cx = (px0 + px1) / 2, cz = (pz0 + pz1) / 2;
+    const shellBot = D.LG - 1.5;
+    for (const z of [pz0 + 0.3, pz1 - 0.5]) box(px0 + 0.2, D.L0, z, px1 - 0.2, shellBot, z + 0.2, MAT.insitu, { stage: 'pools', seq: h * 2, anim: 'rise' }).name = 'Pool plinth';
     const g = new THREE.Group();
-    const b0 = new THREE.Mesh(boxGeo(3, 0.2, 5), mat(MAT.precast));
-    b0.position.y = -1.4;
-    const w1 = new THREE.Mesh(boxGeo(0.2, 1.5, 5), mat(MAT.precast)); w1.position.set(-1.4, -0.75, 0);
-    const w2 = w1.clone(); w2.position.x = 1.4;
-    const w3 = new THREE.Mesh(boxGeo(3, 1.5, 0.2), mat(MAT.precast)); w3.position.set(0, -0.75, -2.4);
-    const w4 = w3.clone(); w4.position.z = 2.4;
-    const lining = new THREE.Mesh(boxGeo(2.6, 0.02, 4.6), mat(0xe8f3f7)); lining.position.y = -1.29;
+    const b0 = new THREE.Mesh(boxGeo(5, 0.2, 3), mat(MAT.precast)); b0.position.y = -1.4;
+    const w1 = new THREE.Mesh(boxGeo(0.2, 1.5, 3), mat(MAT.precast)); w1.position.set(-2.4, -0.75, 0);
+    const w2 = w1.clone(); w2.position.x = 2.4;
+    const w3 = new THREE.Mesh(boxGeo(5, 1.5, 0.2), mat(MAT.precast)); w3.position.set(0, -0.75, -1.4);
+    const w4 = w3.clone(); w4.position.z = 1.4;
+    const lining = new THREE.Mesh(boxGeo(4.6, 0.02, 2.6), mat(0xe8f3f7)); lining.position.y = -1.29;
     [b0, w1, w2, w3, w4, lining].forEach(p => { p.castShadow = true; p.receiveShadow = true; g.add(p); });
-    g.position.set(cx, D.GL + 0.1, 32.5);
+    g.position.set(cx, D.LG, cz);
     add(g, { stage: 'pools', seq: h * 2 + 1 });
   }
-  // pool shells from the street: ~15 t at up to ~38 m radius – lift study hold point
-  const crane130a = makeCrane(1, 38); crane130a.position.set(15, D.GL, -5.5);
+  // ~15 t shells lifted from the Goldie St bays at ~32 m radius, over the open basement
+  const crane130a = makeCrane(1, 32); crane130a.position.set(13, D.GL, CZ);
   add(crane130a, { stage: 'pools', seq: 0, anim: 'fade', rm: 'pools', rmSeq: 99, temp: true });
-  crane130a.userData.el.slew = [15, 32.5];
+  crane130a.userData.el.setups = { pools: [[13, CZ], [31.6, CZ]] };
+  crane130a.userData.el.slew = [22.3, 23];
 
   // ------------------------------------------------------------- 13 LG planks + topping
-  // holes: list of [x0, z0, x1, z1] openings cut out of the planks (stairs, ramp mouths)
-  const planks = (y, depth, stage, seqBase, holes = []) => {
-    const cols = Math.round(D.W / 2.4), pw = D.W / cols;
-    const rows = Math.max(1, Math.round(depth / 7.4)), pd = depth / rows;
+  // Hollowcore planks span between the grid lines (7.4 m across each bay, 3.8 m in the ramp bays),
+  // laid in 2.4 m widths. holes: [x0, z0, x1, z1] openings (stairs, lift shafts, pools).
+  const planksIn = (y, [x0, z0, x1, z1], stage, seqBase, holes = []) => {
+    const rows = Math.max(1, Math.round((z1 - z0) / 2.4)), pd = (z1 - z0) / rows;
     let k = 0;
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      const pieces = rectMinus([c * pw + 0.02, r * pd + 0.02, (c + 1) * pw - 0.02, (r + 1) * pd - 0.02], holes);
+    for (let r = 0; r < rows; r++) {
+      const pieces = rectMinus([x0 + 0.02, z0 + r * pd + 0.02, x1 - 0.02, z0 + (r + 1) * pd - 0.02], holes);
       if (!pieces.length) continue;
       const seq = seqBase + k++;
-      for (const [a, b, cc, d] of pieces) box(a, y, b, cc, y + D.PLANK, d, 0xc8c4ba, { stage, seq });
+      for (const [a, b, c, d] of pieces) box(a, y, b, c, y + D.PLANK, d, 0xc8c4ba, { stage, seq });
     }
     return k;
   };
-  const topping = (y, depth, stage, seq, holes = []) => {
-    for (const [a, b, c, d] of rectMinus([0, 0, D.W, depth], holes))
+  const toppingIn = (y, rect, stage, seq, holes = []) => {
+    for (const [a, b, c, d] of rectMinus(rect, holes))
       box(a, y, b, c, y + D.TOP, d, 0xb4b1a9, { stage, seq, anim: 'rise' }, { roughness: 0.5 });
   };
-  // spiral stair opening in every house (house-local STAIR_HOLE, 0.075 in from the party wall)
-  const STAIR_HOLES = [0, 1, 2, 3, 4].map(h => { const x = HOUSE_W * h + 0.075; return [x + STAIR_HOLE[0], STAIR_HOLE[1], x + STAIR_HOLE[2], STAIR_HOLE[3]]; });
-
-  // Ramp mouths: no LG floor over the two ramp corridors back to z = 11, where the ramp has
-  // dropped enough to give 2.35 m clear under the LG soffit (min 2.2 m). The ramps run under L1
-  // before that. Houses 1 and 5 start their LG floor behind the mouth.
-  const PLANK_COLS = Math.round(D.W / 2.4), PW = D.W / PLANK_COLS, MOUTH_Z = 11;
-  const MOUTH_X0 = 2 * PW, MOUTH_X1 = D.W - 2 * PW;
-  const MOUTHS = [[-0.1, -0.1, MOUTH_X0, MOUTH_Z], [MOUTH_X1, -0.1, D.W + 0.1, MOUTH_Z]];
-  const inMouthZone = (x, z) => z < MOUTH_Z && (x < MOUTH_X0 || x > MOUTH_X1);
-  props(D.L0, lgSoffit, D.BD, 'lg', 'roof', 0, inMouthZone);
-  const nLG = planks(lgSoffit, D.BD, 'lg', 1, MOUTHS);
-  topping(lgSoffit + D.PLANK, D.BD, 'lg', nLG + 2, MOUTHS);
-  // upstand kerb finishing the LG slab edge at each ramp mouth (no downstand – keeps headroom)
-  for (const [a, b] of [[0, MOUTH_X0], [MOUTH_X1, D.W]])
-    box(a, lgSoffit, MOUTH_Z - 0.2, b, lgSoffit + D.PLANK + D.TOP + 0.1, MOUTH_Z, MAT.insitu, { stage: 'lg', seq: nLG + 3, anim: 'rise' });
+  const LIFTS = [0, 1, 2, 3, 4].map(h => inHouse(h, [LIFT.x0 - 0.15, LIFT.z0 - 0.15, LIFT.x1 + 0.15, LIFT.z1 + 0.15]));
+  const SPIRALS = [0, 1, 2, 3, 4].map(h => inHouse(h, STAIR_HOLE));
+  const BSTAIRS = [0, 1, 2, 3, 4].map(h => inHouse(h, BSTAIR_HOLE));
+  const POOLS = [0, 1, 2, 3, 4].map(POOL);
+  const LG_AREAS = [
+    ...[0, 1, 2, 3, 4].map(h => [HX(h), 0, HX(h + 1), D.BD]),           // houses + podium, bay by bay
+    [0, D.RAMP_Z1, HX(0), D.BD], [HX(5), D.RAMP_Z1, D.W, D.BD],          // side yards behind the ramps
+  ];
+  const LG_HOLES = [...LIFTS, ...BSTAIRS, ...POOLS];
+  props(D.L0, lgSoffit, 0, 0, D.W, D.BD, 'lg', 'roof', 0, (x, z) =>
+    (z < D.RAMP_Z1 && (x < HX(0) || x > HX(5))) || POOLS.some(p => inside(x, z, p, 0.4)) || LIFTS.some(p => inside(x, z, p, 0.3)) || BSTAIRS.some(p => inside(x, z, p, 0.3)));
+  let nLG = 1;
+  LG_AREAS.forEach(r => { nLG += planksIn(lgSoffit, r, 'lg', nLG, LG_HOLES); });
+  LG_AREAS.forEach(r => toppingIn(lgSoffit + D.PLANK, r, 'lg', nLG + 2, LG_HOLES));
+  // slab edge upstands where the side-yard deck meets the open ramp
+  for (const [a, b] of [[0, HX(0)], [HX(5), D.W]])
+    box(a, lgSoffit, D.RAMP_Z1 - 0.2, b, D.LG + 0.1, D.RAMP_Z1, MAT.insitu, { stage: 'lg', seq: nLG + 3, anim: 'rise' });
   // 130 t AT works only from the Goldie St bays, relocating along the frontage so it is
-  // never stood on (or trapped by) the deck: plank set-ups N / S, panel set-ups per house pair
-  const crane130b = makeCrane(1, 30); crane130b.position.set(8, D.GL, -5.5);
+  // never stood on (or trapped by) the deck: set-ups in front of Houses 1–2, House 3 and Houses 4–5
+  const crane130b = makeCrane(1, 30); crane130b.position.set(10, D.GL, CZ);
   add(crane130b, { stage: 'lg', seq: 0, anim: 'fade', rm: 'l2', rmSeq: 99, temp: true });
-  crane130b.userData.el.setups = { lg: [[8, -5.5], [22, -5.5]], w1: [[6, -5.5], [15, -5.5], [24, -5.5]], l1: [[8, -5.5], [22, -5.5]], w2: [[6, -5.5], [15, -5.5], [24, -5.5]], l2: [[8, -5.5], [22, -5.5]] };
-  crane130b.userData.el.slew = [15, 12];
+  const SET3 = [[10, CZ], [22.3, CZ], [34.6, CZ]];
+  crane130b.userData.el.setups = { lg: SET3, w1: SET3, l1: SET3, w2: SET3, l2: SET3 };
+  crane130b.userData.el.slew = [22.3, 10];
 
   // ------------------------------------------------------------- 14/16 party walls
   const partyWalls = (y0, y1, depth, stage, seqOff, north) => {
     const n = 6;
     for (let i = 0; i <= 5; i++) {
-      const x = Math.min(Math.max(i * HOUSE_W, 0.075), D.W - 0.075);
       for (let s = 0; s < n; s++) {
         const z0 = s * depth / n, z1 = (s + 1) * depth / n - 0.04;
-        const isSandwich = north && i === 0 && s >= 0;
-        box(x - 0.075, y0, z0, x + 0.075, y1, z1, isSandwich ? 0xa9b3b8 : MAT.precast, { stage, seq: seqOff + i * n + s, house: Math.min(i, 4) });
+        const isSandwich = north && i === 0;
+        box(HX(i) - 0.075, y0, z0, HX(i) + 0.075, y1, z1, isSandwich ? 0xa9b3b8 : MAT.precast, { stage, seq: seqOff + i * n + s, house: Math.min(i, 4) });
       }
     }
   };
   partyWalls(D.LG, D.L1 - D.TOP - D.PLANK, D.HD1, 'w1', 0, false);
-  // (no crane on the LG deck – the panels are lifted by the street crane set-ups above)
 
   // ------------------------------------------------------------- 15 L1 planks, balconies, topping
+  const HOUSE_RECTS = [0, 1, 2, 3, 4].map(h => [HX(h), 0, HX(h + 1), D.HD1]);
+  const UP_HOLES = [...LIFTS, ...SPIRALS];
   const l1S = D.L1 - D.TOP - D.PLANK;
-  props(D.LG, l1S, D.HD1, 'l1', 'roof', 0);
-  const nL1 = planks(l1S, D.HD1, 'l1', 1, STAIR_HOLES);
-  topping(l1S + D.PLANK, D.HD1, 'l1', nL1 + 8, STAIR_HOLES);
-  for (let h = 0; h < 5; h++) box(HOUSE_W * h + 0.6, D.L1 - 0.25, -1.8, HOUSE_W * (h + 1) - 0.6, D.L1, 0, MAT.precast, { stage: 'l1', seq: nL1 + 2 + h });
+  props(D.LG, l1S, HX(0), 0, HX(5), D.HD1, 'l1', 'roof', 0, (x, z) => UP_HOLES.some(p => inside(x, z, p, 0.3)));
+  let nL1 = 1;
+  HOUSE_RECTS.forEach(r => { nL1 += planksIn(l1S, r, 'l1', nL1, UP_HOLES); });
+  HOUSE_RECTS.forEach(r => toppingIn(l1S + D.PLANK, r, 'l1', nL1 + 8, UP_HOLES));
+  for (let h = 0; h < 5; h++) box(HX(h) + 0.6, D.L1 - 0.25, -1.8, HX(h + 1) - 0.6, D.L1, 0, MAT.precast, { stage: 'l1', seq: nL1 + 2 + h });
 
   partyWalls(D.L1, D.L2 - D.TOP - D.PLANK, D.HD1, 'w2', 0, true);
 
-  // ------------------------------------------------------------- 17 L2
+  // ------------------------------------------------------------- 17 L2 (floor runs to grid C; the rear 3.7 m is the roof terrace)
   const l2S = D.L2 - D.TOP - D.PLANK;
-  props(D.L1, l2S, D.HD1, 'l2', 'roof', 0);
-  const nL2 = planks(l2S, D.HD1, 'l2', 1, STAIR_HOLES);
-  topping(l2S + D.PLANK, D.HD1, 'l2', nL2 + 8, STAIR_HOLES);
-  for (let h = 0; h < 5; h++) box(HOUSE_W * h + 0.6, D.L2 - 0.25, -1.8, HOUSE_W * (h + 1) - 0.6, D.L2, 0, MAT.precast, { stage: 'l2', seq: nL2 + 2 + h });
+  props(D.L1, l2S, HX(0), 0, HX(5), D.HD1, 'l2', 'roof', 0, (x, z) => UP_HOLES.some(p => inside(x, z, p, 0.3)));
+  let nL2 = 1;
+  HOUSE_RECTS.forEach(r => { nL2 += planksIn(l2S, r, 'l2', nL2, UP_HOLES); });
+  HOUSE_RECTS.forEach(r => toppingIn(l2S + D.PLANK, r, 'l2', nL2 + 8, UP_HOLES));
+  for (let h = 0; h < 5; h++) box(HX(h) + 0.6, D.L2 - 0.25, -1.8, HX(h + 1) - 0.6, D.L2, 0, MAT.precast, { stage: 'l2', seq: nL2 + 2 + h });
 
   // ------------------------------------------------------------- 19 steel, L2 framing, roof
+  const BX0 = HX(0), BX1 = HX(5);
   for (let h = 0; h < 5; h++) {
-    const x0 = HOUSE_W * h;
-    for (const z of [0.3, D.HD2 - 0.3]) box(x0 + HOUSE_W / 2 - 0.1, D.L2, z - 0.1, x0 + HOUSE_W / 2 + 0.1, D.ROOF, z + 0.1, MAT.steel, { stage: 'roof', seq: h, anim: 'rise', house: h });
-    box(x0 + 0.2, D.ROOF - 0.35, 0.2, x0 + HOUSE_W - 0.2, D.ROOF - 0.05, 0.45, MAT.steel, { stage: 'roof', seq: 5 + h, house: h });
+    for (const z of [0.3, D.HD2 - 0.3]) box(HC(h) - 0.1, D.L2, z - 0.1, HC(h) + 0.1, D.ROOF, z + 0.1, MAT.steel, { stage: 'roof', seq: h, anim: 'rise', house: h });
+    box(HX(h) + 0.2, D.ROOF - 0.35, 0.2, HX(h + 1) - 0.2, D.ROOF - 0.05, 0.45, MAT.steel, { stage: 'roof', seq: 5 + h, house: h });
   }
-  // L2 timber framing (studs) front & back
   for (let h = 0; h < 5; h++) for (const z of [0.1, D.HD2 - 0.1]) {
-    for (let x = HOUSE_W * h + 0.3; x < HOUSE_W * (h + 1) - 0.2; x += 0.6)
+    for (let x = HX(h) + 0.3; x < HX(h + 1) - 0.2; x += 0.6)
       box(x, D.L2, z - 0.045, x + 0.045, D.ROOF - 0.35, z + 0.045, MAT.timber, { stage: 'roof', seq: 10 + h, anim: 'rise', house: h });
   }
-  // L2 party walls continue in timber (framed)
-  for (let i = 0; i <= 5; i++) {
-    const x = Math.min(Math.max(i * HOUSE_W, 0.1), D.W - 0.1);
-    box(x - 0.1, D.L2, 0, x + 0.1, D.ROOF, D.HD2, 0xd5c29f, { stage: 'roof', seq: 15 + i, anim: 'rise' });
-  }
-  // rafters / joists
-  for (let z = 0.3; z < D.HD2; z += 0.9) box(0, D.ROOF - 0.3, z, D.W, D.ROOF - 0.05, z + 0.06, MAT.timber, { stage: 'roof', seq: 22 + z / 3 });
-  box(0, D.ROOF - 0.05, 0, D.W, D.ROOF, D.HD2, MAT.ply, { stage: 'roof', seq: 30 });
-  // parapets
-  box(0, D.ROOF, -0.05, D.W, D.ROOF + 0.6, 0.15, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
-  box(0, D.ROOF, D.HD2 - 0.15, D.W, D.ROOF + 0.6, D.HD2 + 0.05, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
-  const hiab = makeCrane(0.6, 18); hiab.position.set(10, D.GL, -5.5);
+  for (let i = 0; i <= 5; i++) box(HX(i) - 0.1, D.L2, 0, HX(i) + 0.1, D.ROOF, D.HD2, 0xd5c29f, { stage: 'roof', seq: 15 + i, anim: 'rise' });
+  for (let z = 0.3; z < D.HD2; z += 0.9) box(BX0, D.ROOF - 0.3, z, BX1, D.ROOF - 0.05, z + 0.06, MAT.timber, { stage: 'roof', seq: 22 + z / 3 });
+  box(BX0, D.ROOF - 0.05, 0, BX1, D.ROOF, D.HD2, MAT.ply, { stage: 'roof', seq: 30 });
+  box(BX0, D.ROOF, -0.05, BX1, D.ROOF + 0.6, 0.15, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
+  box(BX0, D.ROOF, D.HD2 - 0.15, BX1, D.ROOF + 0.6, D.HD2 + 0.05, MAT.ply, { stage: 'roof', seq: 31, anim: 'rise' });
+  const hiab = makeCrane(0.6, 18); hiab.position.set(22.3, D.GL, CZ);
   add(hiab, { stage: 'roof', seq: 0, anim: 'fade', rm: 'roof', rmSeq: 99, temp: true });
-  hiab.userData.el.slew = [15, 9];
+  hiab.userData.el.setups = { roof: [[12, CZ], [22.3, CZ], [32.6, CZ]] };
+  hiab.userData.el.slew = [22.3, 7];
 
   // ------------------------------------------------------------- 20 scaffold + membrane
-  const scaf = (x0, z0, x1, z1, seq) => {
+  // base(x, z): what each standard lands on (street / front yard, ramp slab, or the podium deck)
+  const scafBase = (x, z) => {
+    if (z > D.HD1) return D.LG;
+    if (x < HX(0) || x > HX(5)) return z < D.RAMP_Z1 ? rampY(z) : D.LG;
+    return D.GL;
+  };
+  const scaf = (x0, z0, x1, z1, out, seq) => {
+    // out: [dx, dz] direction away from the building
     const g = new THREE.Group();
     const along = Math.abs(x1 - x0) > Math.abs(z1 - z0);
     const len = along ? Math.abs(x1 - x0) : Math.abs(z1 - z0);
     const top = D.ROOF + 1.2;
+    const at = (s, off) => [along ? Math.min(x0, x1) + s + out[0] * off : x0 + out[0] * off, along ? z0 + out[1] * off : Math.min(z0, z1) + s + out[1] * off];
     for (let s = 0; s <= len; s += 2.4) for (const off of [0, 1.1]) {
-      const post = new THREE.Mesh(boxGeo(0.06, top - D.GL, 0.06), mat(MAT.scaffold, { metalness: 0.4 }));
-      post.position.set(along ? Math.min(x0, x1) + s : x0 + (x0 < 1 ? -off : off), (top + D.GL) / 2, along ? z0 - off : Math.min(z0, z1) + s);
-      g.add(post);
+      const [px, pz] = at(s, off), b0 = scafBase(px, pz);
+      const post = new THREE.Mesh(boxGeo(0.06, top - b0, 0.06), mat(MAT.scaffold, { metalness: 0.4 }));
+      post.position.set(px, (top + b0) / 2, pz); g.add(post);
     }
-    for (let y = D.GL + 2; y <= top; y += 2) for (const off of [0, 1.1]) {
+    const lo = Math.max(D.GL, scafBase(...at(0, 0)), scafBase(...at(len, 0))) + 2;
+    for (let y = lo; y <= top; y += 2) for (const off of [0, 1.1]) {
+      const [px, pz] = at(len / 2, off);
       const led = new THREE.Mesh(boxGeo(along ? len : 0.05, 0.05, along ? 0.05 : len), mat(MAT.scaffold, { metalness: 0.4 }));
-      led.position.set(along ? (x0 + x1) / 2 : x0 + (x0 < 1 ? -off : off), y, along ? z0 - off : (z0 + z1) / 2);
-      g.add(led);
+      led.position.set(px, y, pz); g.add(led);
       if (off === 1.1) {
+        const [dx2, dz2] = at(len / 2, 0.55);
         const deck = new THREE.Mesh(boxGeo(along ? len : 1.1, 0.04, along ? 1.1 : len), mat(0x9b7b4f));
-        deck.position.set(along ? (x0 + x1) / 2 : x0 + (x0 < 1 ? -0.55 : 0.55), y - 0.05, along ? z0 - 0.55 : (z0 + z1) / 2);
-        g.add(deck);
+        deck.position.set(dx2, y - 0.05, dz2); g.add(deck);
       }
     }
-    // containment netting
-    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, top - D.GL), mat(0xcfd6da, { transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
-    net.position.set(along ? (x0 + x1) / 2 : x0 + (x0 < 1 ? -1.15 : 1.15), (top + D.GL) / 2, along ? z0 - 1.15 : (z0 + z1) / 2);
+    const [nx, nz] = at(len / 2, 1.15);
+    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, top - lo + 2), mat(0xcfd6da, { transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
+    net.position.set(nx, (top + lo - 2) / 2, nz);
     if (!along) net.rotation.y = Math.PI / 2;
     g.add(net);
     g.children.forEach(c => { c.castShadow = true; });
     add(g, { stage: 'membrane', seq, anim: 'rise', rm: 'strike', rmSeq: seq, temp: true });
   };
-  scaf(0, -0.4, D.W, -0.4, 0);
-  scaf(-0.4, 0, -0.4, D.HD1, 1);
-  scaf(D.W + 0.4, 0, D.W + 0.4, D.HD1, 2);
-  // protected pedestrian gantry
-  box(-0.4, D.GL + 2.6, -2.6, D.W + 0.4, D.GL + 2.8, -0.2, 0x7b8a96, { stage: 'membrane', seq: 0, anim: 'fade', rm: 'strike', rmSeq: 3, temp: true });
+  scaf(BX0 - 0.4, -0.4, BX1 + 0.4, -0.4, [0, -1], 0);
+  scaf(BX0 - 0.4, 0, BX0 - 0.4, D.HD1, [-1, 0], 1);
+  scaf(BX1 + 0.4, 0, BX1 + 0.4, D.HD1, [1, 0], 2);
+  scaf(BX0 - 0.4, D.HD1 + 0.4, BX1 + 0.4, D.HD1 + 0.4, [0, 1], 3);
+  // protected pedestrian gantry over the footpath
+  box(-0.4, D.GL + 2.6, ST.fp, D.W + 0.4, D.GL + 2.8, D.FB + 0.2, 0x7b8a96, { stage: 'membrane', seq: 0, anim: 'fade', rm: 'strike', rmSeq: 3, temp: true });
   // goods hoist
-  box(14.6, D.GL, -2.2, 15.8, D.ROOF + 1.5, -1.2, 0xd5d9dc, { stage: 'membrane', seq: 1, anim: 'rise', rm: 'strike', rmSeq: 2, temp: true }, { transparent: true, opacity: 0.6 });
-  // membrane roof
-  box(0.1, D.ROOF, 0.15, D.W - 0.1, D.ROOF + 0.04, D.HD2 - 0.15, MAT.roofMem, { stage: 'membrane', seq: 4, anim: 'fade' }, { roughness: 0.6 });
-  box(0.1, D.L2, D.HD2, D.W - 0.1, D.L2 + 0.03, D.HD1, MAT.roofMem, { stage: 'membrane', seq: 5, anim: 'fade' }, { roughness: 0.6 });
-  box(-0.05, D.ROOF + 0.6, -0.1, D.W + 0.05, D.ROOF + 0.66, 0.2, 0x8a9096, { stage: 'membrane', seq: 6 });
-  box(-0.05, D.ROOF + 0.6, D.HD2 - 0.2, D.W + 0.05, D.ROOF + 0.66, D.HD2 + 0.1, 0x8a9096, { stage: 'membrane', seq: 6 });
+  box(21.7, D.GL, -2.2, 22.9, D.ROOF + 1.5, -1.2, 0xd5d9dc, { stage: 'membrane', seq: 1, anim: 'rise', rm: 'strike', rmSeq: 2, temp: true }, { transparent: true, opacity: 0.6 });
+  // membrane roof + L2 roof terraces
+  box(BX0 + 0.1, D.ROOF, 0.15, BX1 - 0.1, D.ROOF + 0.04, D.HD2 - 0.15, MAT.roofMem, { stage: 'membrane', seq: 4, anim: 'fade' }, { roughness: 0.6 });
+  box(BX0 + 0.1, D.L2, D.HD2, BX1 - 0.1, D.L2 + 0.03, D.HD1, MAT.roofMem, { stage: 'membrane', seq: 5, anim: 'fade' }, { roughness: 0.6 });
+  box(BX0 - 0.05, D.ROOF + 0.6, -0.1, BX1 + 0.05, D.ROOF + 0.66, 0.2, 0x8a9096, { stage: 'membrane', seq: 6 });
+  box(BX0 - 0.05, D.ROOF + 0.6, D.HD2 - 0.2, BX1 + 0.05, D.ROOF + 0.66, D.HD2 + 0.1, 0x8a9096, { stage: 'membrane', seq: 6 });
 
   // ------------------------------------------------------------- 21 joinery
   const glassM = { transparent: true, opacity: 0.45, roughness: 0.1, metalness: 0.3 };
   const joinery = (h, y0, y1, z, seq) => {
-    const x0 = HOUSE_W * h + 0.5, x1 = HOUSE_W * (h + 1) - 0.5;
+    const x0 = HX(h) + 0.5, x1 = HX(h + 1) - 0.5;
     const g = new THREE.Group();
     const gl = new THREE.Mesh(boxGeo(x1 - x0, y1 - y0, 0.03), mat(MAT.glass, glassM)); gl.position.set((x0 + x1) / 2, (y0 + y1) / 2, z);
     g.add(gl);
-    for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / 3) {
+    for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / 4) {
       const mull = new THREE.Mesh(boxGeo(0.06, y1 - y0, 0.08), mat(0x2e3236)); mull.position.set(x, (y0 + y1) / 2, z); g.add(mull);
     }
     for (const y of [y0, y1]) { const tr = new THREE.Mesh(boxGeo(x1 - x0, 0.06, 0.08), mat(0x2e3236)); tr.position.set((x0 + x1) / 2, y, z); g.add(tr); }
     add(g, { stage: 'joinery', seq, anim: 'fade', house: h });
   };
   for (let h = 0; h < 5; h++) {
-    // Houses 1 and 5: LG front glazing sits at the back of the ramp mouth
-    joinery(h, D.LG + 0.05, D.L1 - 0.45, h === 0 || h === 4 ? MOUTH_Z : 0.02, h);
+    joinery(h, D.LG + 0.05, D.L1 - 0.45, 0.02, h);
     joinery(h, D.L1 + 0.05, D.L2 - 0.45, 0.02, h + 5);
     joinery(h, D.L2 + 0.05, D.ROOF - 0.4, 0.2, h + 10);
     joinery(h, D.LG + 0.05, D.L1 - 0.45, D.HD1 - 0.02, h + 15);
@@ -634,72 +664,64 @@ export function buildModel(stageIndex) {
 
   // ------------------------------------------------------------- 22 facade
   for (let h = 0; h < 5; h++) {
-    const x0 = HOUSE_W * h, x1 = x0 + HOUSE_W;
-    // render bands at slab edges (front and back)
+    const x0 = HX(h), x1 = HX(h + 1);
     for (const [y0, y1] of [[D.L1 - 0.45, D.L1 + 0.05], [D.L2 - 0.45, D.L2 + 0.05]]) {
       box(x0, y0, -0.1, x1, y1, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
       box(x0, y0, D.HD1 - 0.02, x1, y1, D.HD1 + 0.1, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
     }
-    // GRC feature fins at party lines (front)
-    box(x0 + 0.05, h === 0 ? D.L1 - 0.45 : D.LG, -0.35, x0 + 0.5, D.L2 + 0.05, 0.02, MAT.grc, { stage: 'facade', seq: 5 + h, house: h, anim: 'rise' });
-    // Nu-Wall to L2 front/back spandrels
+    box(x0 + 0.05, D.LG, -0.35, x0 + 0.5, D.L2 + 0.05, 0.02, MAT.grc, { stage: 'facade', seq: 5 + h, house: h, anim: 'rise' });
     box(x0, D.ROOF - 0.4, 0.1, x1, D.ROOF + 0.6, 0.2, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
     box(x0, D.ROOF - 0.4, D.HD2 - 0.2, x1, D.ROOF + 0.6, D.HD2 - 0.1, MAT.nuwall, { stage: 'facade', seq: 10 + h, house: h, anim: 'fade' });
-    // LG plinth render (Houses 1 and 5: render the ramp-mouth head and the set-back LG front instead)
-    if (h === 0 || h === 4) {
-      box(x0, lgSoffit, MOUTH_Z - 0.22, x1, D.LG + 0.05, MOUTH_Z - 0.2, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
-      box(x0, D.L1 - 0.45, -0.1, x1, D.L1 - 0.2, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
-    } else box(x0, D.GL, -0.1, x1, D.LG + 0.05, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });
+    box(x0, D.GL - 0.1, -0.1, x1, D.LG + 0.05, 0.02, MAT.render, { stage: 'facade', seq: h, house: h, anim: 'fade' });  // LG plinth
   }
-  // end wall render
-  box(-0.12, D.LG, 0, 0, D.ROOF + 0.6, D.HD1, MAT.render, { stage: 'facade', seq: 15, anim: 'fade' });
-  box(D.W, D.LG, 0, D.W + 0.12, D.ROOF + 0.6, D.HD1, MAT.render, { stage: 'facade', seq: 16, anim: 'fade' });
-  // Abodo soffits under balconies
+  // end walls rendered to the side yards: down to the ramp over grid G–E, down to the deck behind
+  for (const [x0, x1, s] of [[BX0 - 0.2, BX0 - 0.075, 15], [BX1 + 0.075, BX1 + 0.2, 16]]) {
+    box(x0, D.L0 + 0.3, 0, x1, D.ROOF + 0.6, D.RAMP_Z1, MAT.render, { stage: 'facade', seq: s, anim: 'fade' });
+    box(x0, D.LG, D.RAMP_Z1, x1, D.ROOF + 0.6, D.HD1, MAT.render, { stage: 'facade', seq: s, anim: 'fade' });
+  }
   for (let h = 0; h < 5; h++) for (const y of [D.L1 - 0.28, D.L2 - 0.28])
-    box(HOUSE_W * h + 0.6, y, -1.8, HOUSE_W * (h + 1) - 0.6, y + 0.03, 0, 0x9c6b3f, { stage: 'facade', seq: 17 + h, house: h, anim: 'fade' });
+    box(HX(h) + 0.6, y, -1.8, HX(h + 1) - 0.6, y + 0.03, 0, 0x9c6b3f, { stage: 'facade', seq: 17 + h, house: h, anim: 'fade' });
 
-  // ------------------------------------------------------------- 23 carpark doors & balustrades
-  // Metalbilt carpark doors at the ramp mouths, shown open (rolled up into the head under the LG slab edge)
-  for (const xa of [0.4, D.W - 0.4 - D.RAMP_W]) box(xa, lgSoffit - 0.4, MOUTH_Z - 0.1, xa + D.RAMP_W, lgSoffit, MOUTH_Z + 0.35, MAT.door, { stage: 'doors', seq: 0, anim: 'rise' }, { metalness: 0.5 });
+  // ------------------------------------------------------------- 23 carpark doors, garage doors & balustrades
+  // Metalbilt carpark doors where each ramp runs under the side-yard deck at grid E (shown open)
+  for (const [a, b] of RAMPS) box(a, lgSoffit - 0.45, D.RAMP_Z1 - 0.1, b, lgSoffit, D.RAMP_Z1 + 0.35, MAT.door, { stage: 'doors', seq: 0, anim: 'rise' }, { metalness: 0.5 });
+  // double garage door per house, facing the aisle on grid E (shown open, rolled into the head)
+  for (let h = 0; h < 5; h++) box(HX(h) + 0.4, lgSoffit - 0.5, D.RAMP_Z1 - 0.35, HX(h) + 5.6, lgSoffit - 0.05, D.RAMP_Z1 - 0.05, 0x8d949b, { stage: 'doors', seq: 0.5, anim: 'rise', house: h }, { metalness: 0.4 });
   for (let h = 0; h < 5; h++) for (const y of [D.L1, D.L2])
-    box(HOUSE_W * h + 0.6, y, -1.85, HOUSE_W * (h + 1) - 0.6, y + 1.05, -1.78, MAT.balustrade, { stage: 'doors', seq: 1 + h, house: h, anim: 'rise' }, { transparent: true, opacity: 0.4 });
+    box(HX(h) + 0.6, y, -1.85, HX(h + 1) - 0.6, y + 1.05, -1.78, MAT.balustrade, { stage: 'doors', seq: 1 + h, house: h, anim: 'rise' }, { transparent: true, opacity: 0.4 });
+  // L2 roof terrace balustrades
+  for (let h = 0; h < 5; h++) box(HX(h) + 0.1, D.L2, D.HD1 - 0.08, HX(h + 1) - 0.1, D.L2 + 1.05, D.HD1 - 0.02, MAT.balustrade, { stage: 'doors', seq: 6 + h, house: h, anim: 'rise' }, { transparent: true, opacity: 0.4 });
 
   // ------------------------------------------------------------- 24 services & lifts (house flow-line)
   for (let h = 0; h < 5; h++) {
-    const x = HOUSE_W * h + HOUSE_W - 1.6;
-    box(x - 0.6, D.L0, 15.7, x + 0.6, D.ROOF - 0.4, 16.95, MAT.lift, { stage: 'services', seq: h * 3 + 2, house: h, anim: 'rise' }, { transparent: true, opacity: 0.7, metalness: 0.4 });
-    // HVAC duct runs each level
+    const [a, b, c, d] = inHouse(h, [LIFT.x0, LIFT.z0, LIFT.x1, LIFT.z1]);
+    box(a, D.L0, b, c, D.ROOF - 0.4, d, MAT.lift, { stage: 'services', seq: h * 3 + 2, house: h, anim: 'rise' }, { transparent: true, opacity: 0.7, metalness: 0.4 });
     for (const y of [D.L1 - 0.6, D.L2 - 0.6, D.ROOF - 0.7])
-      box(HOUSE_W * h + 0.8, y, 3, HOUSE_W * h + 1.2, y + 0.3, D.HD2 - 2, MAT.duct2, { stage: 'services', seq: h * 3, house: h, anim: 'fade' });
-    // plumbing stack
-    cyl(HOUSE_W * h + 2.2, D.L0, 20.8, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
-    // HWCs in basement
-    for (const dx of [0, 0.8]) cyl(HOUSE_W * h + 3 + dx, D.L0, 22.5, 0.33, 1.8, 0xe8e8e8, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 14);
+      box(HF(h) + 2.55, y, 1, HF(h) + 3.05, y + 0.3, D.HD2 - 1.5, MAT.duct2, { stage: 'services', seq: h * 3, house: h, anim: 'fade' });
+    cyl(HF(h) + 5.6, D.L0, 7.85, 0.08, D.ROOF - D.L0, MAT.ww, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 8);
+    // HWCs in the basement, in front of the garage
+    for (const dx of [0, 0.8]) cyl(HF(h) + 1.0 + dx, D.L0, 1.1, 0.33, 1.8, 0xe8e8e8, { stage: 'services', seq: h * 3 + 1, house: h, anim: 'rise' }, 14);
   }
-  // carpark extract fans
-  box(6, lgSoffit - 0.5, 20, 24, lgSoffit - 0.1, 20.5, 0x9aa4ad, { stage: 'services', seq: 16, anim: 'fade' });
+  // carpark extract fans along the aisle
+  box(6, lgSoffit - 0.5, 13.4, 38, lgSoffit - 0.1, 13.9, 0x9aa4ad, { stage: 'services', seq: 16, anim: 'fade' });
 
   // ------------------------------------------------------------- 25 fitout (house flow-line)
   for (let h = 0; h < 5; h++) {
-    const x0 = HOUSE_W * h + 0.2, x1 = HOUSE_W * (h + 1) - 0.2;
+    const x0 = HF(h), x1 = HF(h) + 7.25;
     for (const [y, depth] of [[D.LG, D.HD1], [D.L1, D.HD1], [D.L2, D.HD2]]) {
       const top = y === D.L2 ? D.ROOF - 0.35 : y + 3.23 - 0.5;
-      // internal partitions
-      box(x0, y, depth * 0.45, x1 - 1.4, top, depth * 0.45 + 0.1, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
-      box(x0 + 2.2, y, depth * 0.45, x0 + 2.3, top, depth - 0.4, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
-      // oak floor
-      const zf = y === D.LG && (h === 0 || h === 4) ? MOUTH_Z + 0.2 : 0.2; // no LG floor over the ramp mouths
-      box(x0, y + 0.001, zf, x1, y + 0.03, depth - 0.2, 0xb88a57, { stage: 'fitout', seq: h * 4 + 3, house: h, anim: 'fade' });
-      // kitchen / joinery block
-      box(x0 + 0.3, y, depth * 0.62, x0 + 1.9, y + 0.9, depth * 0.62 + 3, 0x3c3f44, { stage: 'fitout', seq: h * 4 + 2, house: h });
+      box(x0, y, 4.35, x1, top, 4.45, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
+      box(x0 + 3.25, y, 4.4, x0 + 3.35, top, 8.0, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
+      box(x0 + 3.3, y, 7.95, x1, top, 8.05, MAT.fit, { stage: 'fitout', seq: h * 4, house: h, anim: 'rise' });
+      for (const [a, b, c, d] of rectMinus([x0 + 0.02, 0.2, x1 - 0.02, depth - 0.2], y === D.LG ? [BSTAIRS[h], LIFTS[h]] : [SPIRALS[h], LIFTS[h]]))
+        box(a, y + 0.001, b, c, y + 0.03, d, 0xb88a57, { stage: 'fitout', seq: h * 4 + 3, house: h, anim: 'fade' });
+      if (y === D.LG) box(x0 + 2.6, y, 9.3, x0 + 4.6, y + 0.9, 11.7, 0x3c3f44, { stage: 'fitout', seq: h * 4 + 2, house: h });
     }
   }
 
   // ------------------------------------------------------------- 27–31 external works
-  // Per-house scope from the Lindsay Building Estimate Rev A (terraces, 20-series block,
-  // Vitex deck, outdoor tiles, outdoor kitchen, spiral stair, pavers, gates, soft landscape)
-  // plus the F9 pool barrier. Garden layout per house (z from the street):
-  //   LG terrace 22.2–25.5 · steps / lawn 25.7–28.4 · pool surround 28.4–36.8 · deck 36.9–39.2 · garden 39.3–45.2
+  // Per-house scope from the Lindsay Building Estimate Rev A, laid out to AD-06: the LG terrace
+  // on grid C–B and the pool court on grid B–A, both on the podium over the basement at LG level.
   const EX = {
     slab: 0xcfccc4, block: 0xc7c1b4, coping: 0xebe6db, tile: 0xd9d3c7, deck: 0x8c7660, soil: 0x4e3b2a,
     pebble: 0xbab6ad, nuwall: 0x3f454b, alu: 0x9aa1a8, shrub: 0x5d8a45, fill: 0xa39c90,
@@ -711,187 +733,171 @@ export function buildModel(stageIndex) {
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
     return t;
   })();
-  const slatFence = (x0, z0, x1, z1, h, o) => {
+  const slatFence = (x0, z0, x1, z1, y0, h, o) => {
     const len = Math.hypot(x1 - x0, z1 - z0), alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0);
     const t = slatTex.clone(); t.needsUpdate = true; t.repeat.set(len / 0.36, 1);
     const m = new THREE.Mesh(boxGeo(alongX ? len : 0.04, h, alongX ? 0.04 : len), mat(0xffffff, { map: t, roughness: 0.9 }));
-    m.position.set((x0 + x1) / 2, D.GL + h / 2, (z0 + z1) / 2);
-    if (!alongX) m.material.map.rotation = 0;
+    m.position.set((x0 + x1) / 2, y0 + h / 2, (z0 + z1) / 2);
     return add(m, o);
   };
-  const glassPanel = (x0, z0, x1, z1, o) => {
+  const glassPanel = (x0, z0, x1, z1, y0, o) => {
     const g = new THREE.Group();
     const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0), len = alongX ? x1 - x0 : z1 - z0;
     const pane = new THREE.Mesh(boxGeo(alongX ? len : 0.012, 1.2, alongX ? 0.012 : len), mat(MAT.balustrade, { transparent: true, opacity: 0.35, roughness: 0.05, metalness: 0.2 }));
-    pane.position.set((x0 + x1) / 2, D.GL + 0.15 + 0.1 + 0.6, (z0 + z1) / 2); g.add(pane);
+    pane.position.set((x0 + x1) / 2, y0 + 0.1 + 0.6, (z0 + z1) / 2); g.add(pane);
     for (let s2 = 0.2; s2 < len; s2 += 0.9) {
       const sp = new THREE.Mesh(boxGeo(0.05, 0.28, 0.05), mat(0x3a3f44, { metalness: 0.7, roughness: 0.3 }));
-      sp.position.set(alongX ? x0 + s2 : x0, D.GL + 0.15 + 0.14, alongX ? z0 : z0 + s2); g.add(sp);
+      sp.position.set(alongX ? x0 + s2 : x0, y0 + 0.14, alongX ? z0 : z0 + s2); g.add(sp);
     }
     return add(g, o);
   };
+  const PY = D.LG;                    // podium finished level
+  const TZ0 = D.HD1, TZ1 = 19.9;      // LG terrace (grid C–B)
+  const QZ0 = 19.9, QZ1 = D.BD - 0.35; // pool court (grid B–A)
 
   for (let h = 0; h < 5; h++) {
-    const x0 = HOUSE_W * h, x1 = x0 + HOUSE_W, cx = x0 + HOUSE_W / 2;
-    const stepX0 = x0 + 0.5, stepX1 = x0 + 1.7;
+    const x0 = HX(h), x1 = HX(h + 1), cx = HC(h);
+    const [px0, pz0, px1, pz1] = POOL(h);
 
-    // --- Externals 1: fill, block walls, concrete terraces & pool surround slabs
-    // AP40 fill either side of the pool surround (the surround slab covers the middle)
-    box(x0 + 0.05, D.GL - 0.06, 25.7, x1 - 0.05, D.GL + 0.02, 28.4, EX.fill, { stage: 'extslab', seq: h * 0.01, anim: 'rise', house: h }, { roughness: 1 });
-    box(x0 + 0.05, D.GL - 0.06, 36.8, x1 - 0.05, D.GL + 0.02, D.SITE_D - 0.05, EX.fill, { stage: 'extslab', seq: h * 0.01, anim: 'rise', house: h }, { roughness: 1 });
-    box(x0 + 0.05, D.LG - 0.14, D.HD1, x1 - 0.05, D.LG, D.BD, EX.slab, { stage: 'extslab', seq: 2 + h * 0.01, anim: 'rise', house: h }, { roughness: 0.8 });
-    // retaining / courtyard block wall along the terrace edge, gap for steps
-    box(x0 + 0.05, D.GL - 0.1, D.BD, stepX0, D.LG + 0.35, D.BD + 0.2, EX.block, { stage: 'extslab', seq: 1 + h * 0.01, anim: 'rise', house: h });
-    box(stepX1, D.GL - 0.1, D.BD, x1 - 0.05, D.LG + 0.35, D.BD + 0.2, EX.block, { stage: 'extslab', seq: 1 + h * 0.01, anim: 'rise', house: h });
-    // low block walls to the sides of each courtyard (between houses)
-    if (h > 0) box(x0 - 0.1, D.LG, D.HD1, x0 + 0.1, D.LG + 1.1, D.BD, EX.block, { stage: 'extslab', seq: 1.5, anim: 'rise', house: h });
-    // steps down from the terrace to the garden
-    const nSteps = 4, rise = (D.LG - D.GL) / nSteps;
-    for (let k = 0; k < nSteps; k++)
-      box(stepX0, D.GL - 0.05, D.BD + 0.2 + k * 0.3, stepX1, D.LG - (k + 1) * rise + rise, D.BD + 0.5 + k * 0.3, EX.slab, { stage: 'extslab', seq: 2.5 + h * 0.01, anim: 'rise', house: h });
-    // pool surround slab (4 strips around the pool opening)
-    const px0 = cx - 1.5, px1 = cx + 1.5, pz0 = 30, pz1 = 35, sx0 = x0 + 0.3, sx1 = x1 - 0.3, sz0 = 28.4, sz1 = 36.8, sy0 = D.GL, sy1 = D.GL + 0.15;
-    for (const [a1, b1, c1, d1] of [[sx0, sz0, sx1, pz0], [sx0, pz1, sx1, sz1], [sx0, pz0, px0, pz1], [px1, pz0, sx1, pz1]])
-      box(a1, sy0, b1, c1, sy1, d1, EX.slab, { stage: 'extslab', seq: 3 + h * 0.01, anim: 'rise', house: h }, { roughness: 0.8 });
+    // --- Externals 1: podium build-up, block upstands, concrete terraces & pool surrounds
+    for (const [a1, b1, c1, d1] of rectMinus([x0 + 0.1, TZ0 + 0.02, x1 - 0.1, QZ1], [[px0, pz0, px1, pz1]]))
+      box(a1, PY - 0.02, b1, c1, PY + 0.08, d1, EX.slab, { stage: 'extslab', seq: 2 + h * 0.01, anim: 'rise', house: h }, { roughness: 0.8 });
+    // block upstand walls between the courts (party lines) and the rear planter wall on grid A
+    box(x0 - 0.1, PY, TZ0, x0 + 0.1, PY + 0.9, QZ1, EX.block, { stage: 'extslab', seq: 1.5, anim: 'rise', house: h });
+    if (h === 4) box(x1 - 0.1, PY, TZ0, x1 + 0.1, PY + 0.9, QZ1, EX.block, { stage: 'extslab', seq: 1.5, anim: 'rise', house: h });
+    box(x0 + 0.1, PY, QZ1, x1 - 0.1, PY + 0.55, D.BD + 0.2, EX.block, { stage: 'extslab', seq: 1 + h * 0.01, anim: 'rise', house: h });
 
     // --- Externals 2: pool plant, coping, outdoor tiles, pool fence, fill
     const cp = 0.3;
     for (const [a1, b1, c1, d1] of [[px0 - cp, pz0 - cp, px1 + cp, pz0], [px0 - cp, pz1, px1 + cp, pz1 + cp], [px0 - cp, pz0, px0, pz1], [px1, pz0, px1 + cp, pz1]])
-      box(a1, sy1, b1, c1, sy1 + 0.06, d1, EX.coping, { stage: 'extpool', seq: 1 + h * 0.01, house: h }, { roughness: 0.5 });
-    // outdoor porcelain to the pool surround and the LG terrace
-    for (const [a1, b1, c1, d1] of [[sx0, sz0, sx1, pz0 - cp], [sx0, pz1 + cp, sx1, sz1], [sx0, pz0 - cp, px0 - cp, pz1 + cp], [px1 + cp, pz0 - cp, sx1, pz1 + cp]])
-      box(a1, sy1, b1, c1, sy1 + 0.02, d1, EX.tile, { stage: 'extpool', seq: 2 + h * 0.01, anim: 'fade', house: h }, { roughness: 0.45 });
-    box(x0 + 0.1, D.LG, D.HD1 + 0.05, x1 - 0.1, D.LG + 0.02, D.BD - 0.02, EX.tile, { stage: 'extpool', seq: 2 + h * 0.01, anim: 'fade', house: h }, { roughness: 0.45 });
-    // pool plant enclosure (behind the deck)
+      box(a1, PY + 0.08, b1, c1, PY + 0.13, d1, EX.coping, { stage: 'extpool', seq: 1 + h * 0.01, house: h }, { roughness: 0.5 });
+    for (const [a1, b1, c1, d1] of rectMinus([x0 + 0.1, TZ0 + 0.02, x1 - 0.1, QZ1 - 0.6], [[px0 - cp, pz0 - cp, px1 + cp, pz1 + cp]]))
+      box(a1, PY + 0.08, b1, c1, PY + 0.1, d1, EX.tile, { stage: 'extpool', seq: 2 + h * 0.01, anim: 'fade', house: h }, { roughness: 0.45 });
+    // pool plant enclosure against the rear planter wall
     const plant = new THREE.Group();
-    { const enc = new THREE.Mesh(boxGeo(1.2, 1.0, 0.9), mat(EX.nuwall, { metalness: 0.4 })); enc.position.set(x0 + 1.0, D.GL + 0.5, 39.95);
-      const hp = new THREE.Mesh(boxGeo(0.9, 0.7, 0.35), mat(0xe4e6e8)); hp.position.set(x0 + 2.3, D.GL + 0.35, 40.1);
-      const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 18), mat(0x333333)); fan.rotation.x = Math.PI / 2; fan.position.set(x0 + 2.3, D.GL + 0.38, 39.92);
+    { const enc = new THREE.Mesh(boxGeo(1.2, 1.0, 0.8), mat(EX.nuwall, { metalness: 0.4 })); enc.position.set(x0 + 1.0, PY + 0.6, QZ1 - 0.95);
+      const hp = new THREE.Mesh(boxGeo(0.9, 0.7, 0.35), mat(0xe4e6e8)); hp.position.set(x0 + 2.3, PY + 0.45, QZ1 - 0.8);
+      const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 18), mat(0x333333)); fan.rotation.x = Math.PI / 2; fan.position.set(x0 + 2.3, PY + 0.48, QZ1 - 0.99);
       plant.add(enc, hp, fan); }
     add(plant, { stage: 'extpool', seq: 0 + h * 0.01, house: h });
-    // frameless glass pool barrier with a self-closing gate on the path side
-    const fx0 = x0 + 0.45, fx1 = x1 - 0.45, fz0 = 28.6, fz1 = 36.6, gate0 = stepX0 + 0.1, gate1 = stepX0 + 1.1;
-    glassPanel(fx0, fz0, gate0, fz0, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
-    glassPanel(gate1, fz0, fx1, fz0, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
-    glassPanel(fx0, fz1, fx1, fz1, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
-    glassPanel(fx0, fz0, fx0, fz1, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
-    glassPanel(fx1, fz0, fx1, fz1, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
+    // frameless glass pool barrier across the court on grid B, gate on the north side
+    const g0 = x0 + 0.5, g1 = x0 + 1.5;
+    glassPanel(x0 + 0.15, QZ0, g0, QZ0, PY + 0.1, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
+    glassPanel(g1, QZ0, x1 - 0.15, QZ0, PY + 0.1, { stage: 'extpool', seq: 3 + h * 0.01, anim: 'rise', house: h });
     const pg = new THREE.Group();
     { const leaf = new THREE.Mesh(boxGeo(1.0, 1.2, 0.014), mat(MAT.balustrade, { transparent: true, opacity: 0.35, roughness: 0.05 }));
-      leaf.position.set((gate0 + gate1) / 2, D.GL + 0.85, fz0);
-      const hinge = new THREE.Mesh(boxGeo(0.06, 0.18, 0.06), mat(0x222222, { metalness: 0.8 })); hinge.position.set(gate0 + 0.05, D.GL + 1.1, fz0);
-      const latch = new THREE.Mesh(boxGeo(0.06, 0.12, 0.08), mat(0x222222, { metalness: 0.8 })); latch.position.set(gate1 - 0.05, D.GL + 1.5, fz0);
+      leaf.position.set((g0 + g1) / 2, PY + 0.8, QZ0);
+      const hinge = new THREE.Mesh(boxGeo(0.06, 0.18, 0.06), mat(0x222222, { metalness: 0.8 })); hinge.position.set(g0 + 0.05, PY + 1.05, QZ0);
+      const latch = new THREE.Mesh(boxGeo(0.06, 0.12, 0.08), mat(0x222222, { metalness: 0.8 })); latch.position.set(g1 - 0.05, PY + 1.45, QZ0);
       pg.add(leaf, hinge, latch); }
     add(pg, { stage: 'extpool', seq: 3.5 + h * 0.01, anim: 'fade', house: h });
-    // fill the pool only once the barrier is complete
-    const water = box(px0 + 0.2, D.GL - 1.1, pz0 + 0.2, px1 - 0.2, D.GL - 0.02, pz1 - 0.2, MAT.water, { stage: 'extpool', seq: 5 + h * 0.01, anim: 'rise', house: h }, { transparent: true, opacity: 0.78, roughness: 0.08 });
+    const water = box(px0 + 0.2, PY - 1.25, pz0 + 0.2, px1 - 0.2, PY - 0.02, pz1 - 0.2, MAT.water, { stage: 'extpool', seq: 5 + h * 0.01, anim: 'rise', house: h }, { transparent: true, opacity: 0.78, roughness: 0.08 });
     water.name = 'Pool fill';
 
-    // --- Externals 3: deck, outdoor kitchen, spiral stair, fences, pavers
+    // --- Externals 3: deck, outdoor kitchen, spiral stair, fences
     const deck = new THREE.Group();
-    { const frame = new THREE.Mesh(boxGeo(HOUSE_W - 0.8, 0.14, 2.3), mat(0x6b5a48)); frame.position.set(cx, D.GL + 0.08, 38.05); deck.add(frame);
-      for (let z = 36.95; z < 39.15; z += 0.16) { const b2 = new THREE.Mesh(boxGeo(HOUSE_W - 0.8, 0.02, 0.14), mat(EX.deck, { roughness: 0.85 })); b2.position.set(cx, D.GL + 0.16, z + 0.07); deck.add(b2); } }
+    { const dz0 = pz1 + cp + 0.05, dz1 = QZ1 - 0.65, dx0 = x0 + 2.9, dx1 = x1 - 0.2;
+      const frame = new THREE.Mesh(boxGeo(dx1 - dx0, 0.06, dz1 - dz0), mat(0x6b5a48)); frame.position.set((dx0 + dx1) / 2, PY + 0.13, (dz0 + dz1) / 2); deck.add(frame);
+      for (let x = dx0; x < dx1 - 0.1; x += 0.16) { const b2 = new THREE.Mesh(boxGeo(0.14, 0.02, dz1 - dz0), mat(EX.deck, { roughness: 0.85 })); b2.position.set(x + 0.07, PY + 0.17, (dz0 + dz1) / 2); deck.add(b2); } }
     add(deck, { stage: 'extdeck', seq: 0 + h * 0.01, anim: 'rise', house: h });
-    // outdoor kitchen on the LG terrace
     const ok = new THREE.Group();
-    { const cab = new THREE.Mesh(boxGeo(2.3, 0.88, 0.62), mat(0x3d4146, { roughness: 0.6 })); cab.position.set(x0 + 1.5, D.LG + 0.44, D.BD - 0.45);
-      const top = new THREE.Mesh(boxGeo(2.36, 0.03, 0.66), mat(0xeeeae3, { roughness: 0.25 })); top.position.set(x0 + 1.5, D.LG + 0.9, D.BD - 0.45);
-      const bbq = new THREE.Mesh(boxGeo(0.8, 0.12, 0.5), mat(0x9aa1a8, { metalness: 0.8, roughness: 0.3 })); bbq.position.set(x0 + 1.0, D.LG + 0.98, D.BD - 0.45);
+    { const cab = new THREE.Mesh(boxGeo(0.62, 0.88, 1.6), mat(0x3d4146, { roughness: 0.6 })); cab.position.set(x0 + 0.5, PY + 0.52, TZ0 + 1.0);
+      const top = new THREE.Mesh(boxGeo(0.66, 0.03, 1.66), mat(0xeeeae3, { roughness: 0.25 })); top.position.set(x0 + 0.5, PY + 0.98, TZ0 + 1.0);
+      const bbq = new THREE.Mesh(boxGeo(0.5, 0.12, 0.8), mat(0x9aa1a8, { metalness: 0.8, roughness: 0.3 })); bbq.position.set(x0 + 0.5, PY + 1.06, TZ0 + 0.8);
       ok.add(cab, top, bbq); }
     add(ok, { stage: 'extdeck', seq: 1 + h * 0.01, house: h });
     // external spiral stair, LG terrace → L2 roof terrace (By Owner)
     const sp = new THREE.Group();
-    { const sx = x1 - 1.1, sz = D.HD1 + 1.2, rise2 = D.L2 - D.LG, n = 30;
+    { const sx = x1 - 1.1, sz = TZ0 + 1.0, rise2 = D.L2 - D.LG, n = 30;
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, rise2 + 1.1, 10), mat(0x2d3034, { metalness: 0.6 })); pole.position.set(sx, D.LG + (rise2 + 1.1) / 2, sz); sp.add(pole);
       for (let k = 0; k < n; k++) {
-        const a = k / n * Math.PI * 2 * 1.75;
-        const tr = new THREE.Mesh(boxGeo(0.85, 0.04, 0.26), mat(0x3a3e42, { metalness: 0.5, roughness: 0.4 }));
-        tr.position.set(sx + Math.cos(a) * 0.45, D.LG + (k + 1) * rise2 / n, sz + Math.sin(a) * 0.45); tr.rotation.y = -a;
+        const a = Math.PI / 2 + k / n * Math.PI * 2 * 1.75;
+        const tr = new THREE.Mesh(boxGeo(0.8, 0.04, 0.26), mat(0x3a3e42, { metalness: 0.5, roughness: 0.4 }));
+        tr.position.set(sx + Math.cos(a) * 0.42, D.LG + (k + 1) * rise2 / n, sz + Math.sin(a) * 0.42); tr.rotation.y = -a;
         sp.add(tr);
-        const post = new THREE.Mesh(boxGeo(0.02, 1.0, 0.02), mat(0x2d3034)); post.position.set(sx + Math.cos(a) * 0.88, D.LG + (k + 1) * rise2 / n + 0.5, sz + Math.sin(a) * 0.88); sp.add(post);
+        const post = new THREE.Mesh(boxGeo(0.02, 1.0, 0.02), mat(0x2d3034)); post.position.set(sx + Math.cos(a) * 0.83, D.LG + (k + 1) * rise2 / n + 0.5, sz + Math.sin(a) * 0.83); sp.add(post);
       } }
     add(sp, { stage: 'extdeck', seq: 2 + h * 0.01, anim: 'rise', house: h });
-    // paver path from the steps to the pool gate
-    for (let k = 0; k < 3; k++) box(stepX0 + 0.1, D.GL + 0.02, 26.6 + k * 0.6, stepX0 + 1.0, D.GL + 0.07, 27.1 + k * 0.6, 0xa9a39a, { stage: 'extdeck', seq: 3 + h * 0.01, anim: 'drop', house: h });
-    // privacy fence between gardens (and boundary fences on the outside houses)
-    if (h > 0) slatFence(x0, D.BD + 0.2, x0, D.SITE_D, 1.8, { stage: 'extdeck', seq: 4 + h * 0.01, anim: 'rise', house: h });
-    // storage & bin enclosure (Nu-Wall, aluminium door) – one per house
-    const bin = new THREE.Group();
-    { const b2 = new THREE.Mesh(boxGeo(1.4, 2.1, 1.5), mat(EX.nuwall, { metalness: 0.4, roughness: 0.5 })); b2.position.set(x1 - 1.0, D.GL + 1.05, D.SITE_D - 0.9);
-      const d2 = new THREE.Mesh(boxGeo(0.9, 1.95, 0.03), mat(EX.alu, { metalness: 0.7, roughness: 0.35 })); d2.position.set(x1 - 1.0, D.GL + 0.98, D.SITE_D - 1.66);
-      bin.add(b2, d2); }
-    add(bin, { stage: 'extfront', seq: 6 + h * 0.01, house: h });
+    // privacy fences between courts, on the block upstands
+    slatFence(x0, TZ0 + 0.3, x0, QZ1, PY + 0.9, 0.9, { stage: 'extdeck', seq: 4 + h * 0.01, anim: 'rise', house: h });
+    if (h === 4) slatFence(x1, TZ0 + 0.3, x1, QZ1, PY + 0.9, 0.9, { stage: 'extdeck', seq: 4 + h * 0.01, anim: 'rise', house: h });
+
+    // --- Externals 4 (per house): front path, steps up to the LG entry, pedestrian gate & letterbox
+    const fx0 = HF(h) + 0.8, fx1 = HF(h) + 2.4, nS = 5, rs = (D.LG - D.GL) / nS;
+    for (let k = 0; k < nS; k++) box(fx0, D.GL, -0.3 - (nS - 1 - k) * 0.32 - 0.32, fx1, D.GL + (k + 1) * rs, -0.3 - (nS - 1 - k) * 0.32, EX.slab, { stage: 'extfront', seq: 4 + h * 0.01, anim: 'rise', house: h });
+    box(fx0, D.GL, -0.3, fx1, D.LG, 0, EX.slab, { stage: 'extfront', seq: 4 + h * 0.01, anim: 'rise', house: h });
 
     // --- Externals 5: soft landscaping & lighting
-    box(stepX1 + 0.1, D.GL + 0.02, D.BD + 0.2, x1 - 0.1, D.GL + 0.09, 28.35, MAT.grass, { stage: 'soft', seq: 0 + h * 0.01, anim: 'fade', house: h });
-    box(x0 + 0.1, D.GL + 0.02, 39.3, x1 - 0.1, D.GL + 0.09, D.SITE_D - 0.1, MAT.grass, { stage: 'soft', seq: 0 + h * 0.01, anim: 'fade', house: h });
-    // planting bed along the fence with shrubs
-    box(x0 + 0.1, D.GL + 0.02, 40.6, x0 + 0.8, D.GL + 0.12, D.SITE_D - 1.8, EX.soil, { stage: 'soft', seq: 1 + h * 0.01, anim: 'fade', house: h });
-    for (let z = 41.1; z < D.SITE_D - 2; z += 0.9) {
-      const sh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), mat(EX.shrub, { flatShading: true }));
-      sh.position.set(x0 + 0.45, D.GL + 0.4, z); add(sh, { stage: 'soft', seq: 2 + h * 0.01, anim: 'grow', house: h });
+    box(x0 + 0.2, PY + 0.55, QZ1 + 0.05, x1 - 0.2, PY + 0.6, D.BD + 0.15, EX.soil, { stage: 'soft', seq: 1 + h * 0.01, anim: 'fade', house: h });
+    for (let x = x0 + 0.5; x < x1 - 0.3; x += 0.9) {
+      const shb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35, 0), mat(EX.shrub, { flatShading: true }));
+      shb.position.set(x, PY + 0.85, (QZ1 + D.BD) / 2 + 0.05); add(shb, { stage: 'soft', seq: 2 + h * 0.01, anim: 'grow', house: h });
     }
-    // pebble strip at the foot of the terrace wall
-    box(stepX1 + 0.1, D.GL + 0.02, D.BD + 0.2, x1 - 0.1, D.GL + 0.1, D.BD + 0.55, EX.pebble, { stage: 'soft', seq: 1 + h * 0.01, anim: 'fade', house: h }, { roughness: 1 });
-    // garden lighting bollards
-    for (const [bx, bz] of [[stepX1 + 0.3, 27.8], [x1 - 0.6, 39.6]]) {
+    // front garden beds either side of the entry steps
+    box(HF(h) + 2.6, D.GL, D.FB + 0.35, HX(h + 1) - 0.1, D.GL + 0.12, -0.15, EX.soil, { stage: 'soft', seq: 1 + h * 0.01, anim: 'fade', house: h });
+    for (let x = HF(h) + 3.0; x < HX(h + 1) - 0.3; x += 0.9) {
+      const shb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), mat(EX.shrub, { flatShading: true }));
+      shb.position.set(x, D.GL + 0.35, -1.2); add(shb, { stage: 'soft', seq: 2 + h * 0.01, anim: 'grow', house: h });
+    }
+    for (const [bx, bz] of [[x1 - 0.5, TZ1 - 0.3], [x0 + 0.4, QZ1 - 0.3]]) {
       const bl = new THREE.Group();
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 10), mat(0x2d3034, { metalness: 0.5 })); post.position.set(bx, D.GL + 0.35, bz);
-      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.08, 10), mat(0xfff1c9, { emissive: 0xffd98a, emissiveIntensity: 0.8 })); lamp.position.set(bx, D.GL + 0.66, bz);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 10), mat(0x2d3034, { metalness: 0.5 })); post.position.set(bx, PY + 0.45, bz);
+      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.08, 10), mat(0xfff1c9, { emissive: 0xffd98a, emissiveIntensity: 0.8 })); lamp.position.set(bx, PY + 0.76, bz);
       bl.add(post, lamp); add(bl, { stage: 'soft', seq: 3 + h * 0.01, anim: 'rise', house: h });
     }
   }
-  // boundary fences: north & south sides of the gardens and the rear boundary
-  slatFence(0.02, D.HD1, 0.02, D.SITE_D, 1.8, { stage: 'extdeck', seq: 4, anim: 'rise' });
-  slatFence(D.W - 0.02, D.HD1, D.W - 0.02, D.SITE_D, 1.8, { stage: 'extdeck', seq: 4, anim: 'rise' });
-  slatFence(0, D.SITE_D - 0.02, D.W, D.SITE_D - 0.02, 1.8, { stage: 'extdeck', seq: 4.5, anim: 'rise' });
-  // garden trees
-  for (const [x, z] of [[4.2, 42.5], [9.3, 43], [16.1, 42.2], [21.8, 43], [27.4, 42.4]]) {
-    const t = tree(root, x, D.GL, z, 0.9); root.remove(t);
+  // side yards over the basement behind the ramps (grid 1–2 and 7–8, E–A): paving and planting
+  for (const [a, b] of [[0.1, HX(0) - 0.1], [HX(5) + 0.1, D.W - 0.1]]) {
+    box(a, PY - 0.02, D.RAMP_Z1 + 0.05, b, PY + 0.08, D.BD - 0.2, EX.slab, { stage: 'extslab', seq: 4, anim: 'rise' }, { roughness: 0.8 });
+    box(a + 0.1, PY + 0.08, D.RAMP_Z1 + 1, a + 1.1, PY + 0.2, D.BD - 1, EX.soil, { stage: 'soft', seq: 1, anim: 'fade' });
+  }
+  // balustrades along the open ramps and the podium edge on the side boundaries
+  for (const [a, b] of RAMPS) box(a < 20 ? b - 0.03 : a, D.GL, D.FB, a < 20 ? b : a + 0.03, D.GL + 1.1, 0, MAT.balustrade, { stage: 'extfront', seq: 2.5, anim: 'rise' }, { transparent: true, opacity: 0.4 });
+  // boundary fences: north & south sides and the rear boundary
+  slatFence(D.SX0 + 0.02, D.FB, D.SX0 + 0.02, D.RB, D.GL, 1.8, { stage: 'extdeck', seq: 4, anim: 'rise' });
+  slatFence(D.SX1 - 0.02, D.FB, D.SX1 - 0.02, D.RB, D.GL, 1.8, { stage: 'extdeck', seq: 4, anim: 'rise' });
+  slatFence(D.SX0, D.RB - 0.02, D.SX1, D.RB - 0.02, D.GL, 1.8, { stage: 'extdeck', seq: 4.5, anim: 'rise' });
+  box(D.SX0, D.GL, D.BD + 0.3, D.SX1, D.GL + 0.08, D.RB - 0.05, EX.soil, { stage: 'soft', seq: 0, anim: 'fade' });
+  // specimen trees at the rear planters
+  for (const x of [HC(0), HC(2), HC(4)]) {
+    const t = tree(root, x - 2.5, PY + 0.55, (QZ1 + D.BD) / 2, 0.8); root.remove(t);
     add(t, { stage: 'soft', seq: 4, anim: 'grow' });
   }
 
   // --- Externals 4: frontage
-  // exposed-aggregate crossings & driveway aprons
-  box(0.4, D.GL, -2.6, 0.4 + D.RAMP_W, D.GL + 0.045, 0.4, MAT.aggregate, { stage: 'extfront', seq: 0, anim: 'fade' }, { roughness: 0.95 });
-  box(D.W - 0.4 - D.RAMP_W, D.GL, -2.6, D.W - 0.4, D.GL + 0.045, 0.4, MAT.aggregate, { stage: 'extfront', seq: 0, anim: 'fade' }, { roughness: 0.95 });
-  // footpath reinstated to AT standard
-  box(0.4 + D.RAMP_W, D.GL, -2.55, D.W - 0.4 - D.RAMP_W, D.GL + 0.035, -0.35, 0xc9c6bd, { stage: 'extfront', seq: 1, anim: 'fade' });
-  // permanent flood barriers at both ramp mouths
-  for (const xa of [0.4, D.W - 0.4 - D.RAMP_W]) {
-    box(xa, D.GL, 0.45, xa + D.RAMP_W, D.GL + 0.18, 0.75, 0x55595e, { stage: 'extfront', seq: 2, anim: 'rise' }, { metalness: 0.5 });
-    for (const px of [xa - 0.12, xa + D.RAMP_W + 0.02]) box(px, D.GL, 0.4, px + 0.1, D.GL + 1.2, 0.8, 0x3a3e42, { stage: 'extfront', seq: 2, anim: 'rise' }, { metalness: 0.6 });
+  for (const [a, b] of RAMPS) {
+    // exposed-aggregate vehicle crossing through the footpath and berm, onto the ramp
+    box(a - 0.6, D.GL, ST.berm, b + 0.6, D.GL + 0.045, D.FB, MAT.aggregate, { stage: 'extfront', seq: 0, anim: 'fade' }, { roughness: 0.95 });
+    // permanent flood barrier and vehicle gate at the boundary, NPR camera post
+    box(a, D.GL, D.FB + 0.15, b, D.GL + 0.18, D.FB + 0.45, 0x55595e, { stage: 'extfront', seq: 2, anim: 'rise' }, { metalness: 0.5 });
+    box(a, D.GL, D.FB + 0.02, b, D.GL + 1.6, D.FB + 0.07, 0x2a2d31, { stage: 'extfront', seq: 3, anim: 'rise' }, { metalness: 0.6 });
+    const px = a < 20 ? b + 0.25 : a - 0.4;
+    box(px, D.GL, D.FB - 0.6, px + 0.15, D.GL + 1.3, D.FB - 0.45, 0x2a2d31, { stage: 'extfront', seq: 3, anim: 'rise' }, { metalness: 0.6 });
   }
-  // vehicle gates with number-plate recognition
-  for (const xa of [0.4, D.W - 0.4 - D.RAMP_W]) {
-    box(xa, D.GL, -0.35, xa + D.RAMP_W, D.GL + 1.6, -0.3, 0x2a2d31, { stage: 'extfront', seq: 3, anim: 'rise' }, { metalness: 0.6 });
-    box(xa - 0.35, D.GL, -0.9, xa - 0.2, D.GL + 1.3, -0.75, 0x2a2d31, { stage: 'extfront', seq: 3, anim: 'rise' }, { metalness: 0.6 }); // NPR camera post
-  }
+  box(-12, D.GL, ST.fp + 0.05, D.W + 12, D.GL + 0.035, D.FB - 0.05, 0xc9c6bd, { stage: 'extfront', seq: 1, anim: 'fade' });   // footpath reinstated
   // front wall with a pedestrian gate and letterbox per house
-  const gates = [[4.5, 5.5], [HOUSE_W * 1.5 - 0.5, HOUSE_W * 1.5 + 0.5], [HOUSE_W * 2.5 - 0.5, HOUSE_W * 2.5 + 0.5], [HOUSE_W * 3.5 - 0.5, HOUSE_W * 3.5 + 0.5], [D.W - 5.5, D.W - 4.5]];
-  let wx = 0.4 + D.RAMP_W + 0.1;
-  for (const [g0, g1] of gates) {
-    box(wx, D.GL, -0.3, g0, D.GL + 1.1, -0.1, EX.block, { stage: 'extfront', seq: 4, anim: 'rise' });
-    box(g0 + 0.02, D.GL + 0.05, -0.24, g1 - 0.02, D.GL + 1.05, -0.2, 0x2a2d31, { stage: 'extfront', seq: 5, anim: 'fade' }, { metalness: 0.6 });
-    box(g1 + 0.1, D.GL + 0.75, -0.42, g1 + 0.45, D.GL + 1.05, -0.3, 0x2a2d31, { stage: 'extfront', seq: 5, anim: 'fade' }, { metalness: 0.5 }); // letterbox
+  let wx = RAMPS[0][1] + 0.2;
+  for (let h = 0; h < 5; h++) {
+    const g0 = HF(h) + 0.8, g1 = HF(h) + 2.4;
+    box(wx, D.GL, D.FB + 0.02, g0, D.GL + 1.1, D.FB + 0.22, EX.block, { stage: 'extfront', seq: 4, anim: 'rise' });
+    box(g0 + 0.02, D.GL + 0.05, D.FB + 0.08, g1 - 0.02, D.GL + 1.05, D.FB + 0.12, 0x2a2d31, { stage: 'extfront', seq: 5, anim: 'fade' }, { metalness: 0.6 });
+    box(g1 + 0.1, D.GL + 0.75, D.FB - 0.05, g1 + 0.45, D.GL + 1.05, D.FB + 0.1, 0x2a2d31, { stage: 'extfront', seq: 5, anim: 'fade' }, { metalness: 0.5 });
     wx = g1;
   }
-  box(wx, D.GL, -0.3, D.W - 0.5 - D.RAMP_W, D.GL + 1.1, -0.1, EX.block, { stage: 'extfront', seq: 4, anim: 'rise' });
-  // new on-street carpark markings
+  box(wx, D.GL, D.FB + 0.02, RAMPS[1][0] - 0.2, D.GL + 1.1, D.FB + 0.22, EX.block, { stage: 'extfront', seq: 4, anim: 'rise' });
   // drive-in bays resurfaced and re-marked across the frontage (the new on-street carpark)
-  box(-1.5, D.GL + 0.001, -8.0, D.W + 1.5, D.GL + 0.012, -3.05, 0x3f4247, { stage: 'extfront', seq: 7, anim: 'fade' }, { roughness: 0.95 });
-  for (let x = -1.5; x <= D.W + 1.6; x += 2.5) box(x, D.GL + 0.012, -8.0, x + 0.12, D.GL + 0.02, -3.2, 0xf2f2ee, { stage: 'extfront', seq: 7.5, anim: 'fade' });
-  // street trees in the berm
-  // berm trees on the party-wall lines, clear of each house's gate
-  for (const x of [HOUSE_W, HOUSE_W * 2, HOUSE_W * 3, HOUSE_W * 4]) {
-    const t = tree(root, x, D.GL, -1.5, 0.45); root.remove(t);
+  box(-12, D.GL + 0.001, ST.bay + 0.05, D.W + 12, D.GL + 0.012, ST.berm - 0.05, 0x55585c, { stage: 'extfront', seq: 7, anim: 'fade' }, { roughness: 0.95 });
+  for (let x = -12; x <= D.W + 12; x += 2.5) if (!crossing(x)) box(x, D.GL + 0.012, ST.bay + 0.1, x + 0.12, D.GL + 0.02, ST.berm - 0.2, 0xf2f2ee, { stage: 'extfront', seq: 7.5, anim: 'fade' });
+  // street trees in the berm, on the party-wall lines
+  for (const i of [1, 2, 3, 4]) {
+    const t = tree(root, HX(i), D.GL, (ST.fp + ST.berm) / 2, 0.45); root.remove(t);
     add(t, { stage: 'soft', seq: 5, anim: 'grow' });
   }
 
   // ------------------------------------------------------------- 28 PC – house number plates
   for (let h = 0; h < 5; h++) {
     const l = makeLabel(`House ${h + 1}`, 1.1);
-    l.position.set(HOUSE_W * (h + 0.5), D.ROOF + 2.2, D.HD2 / 2);
+    l.position.set(HC(h), D.ROOF + 2.2, D.HD2 / 2);
     add(l, { stage: 'pc', seq: h, anim: 'fade' });
     l.castShadow = false;
   }

@@ -29,11 +29,11 @@ controls.minDistance = 4; controls.maxDistance = 220;
 
 scene.add(new THREE.HemisphereLight(0xf4f7fb, 0x5a5146, 1.25));
 const sun = new THREE.DirectionalLight(0xfff4e2, 2.2);
-sun.position.set(-30, 60, -18); // afternoon sun from the north-west (southern hemisphere)
-sun.target.position.set(15, 0, 18);
+sun.position.set(-23, 60, -24); // afternoon sun from the north-west (southern hemisphere)
+sun.target.position.set(22, 0, 12);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 5, far: 160 });
+Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 5, far: 180 });
 sun.shadow.bias = -0.0006;
 scene.add(sun, sun.target);
 
@@ -167,7 +167,7 @@ function update(time) {
       o.position.x = pt[0] + (pt[1] < 0.5 ? 0 : pt[0] > DIM.W - 1 ? -3 : 3);
       o.position.z = pt[1] < 0.5 ? 3 : pt[1];
     }
-    if (el.drive && !reduceMotion) o.position.x = -14 + ((time * 0.004) % 60);
+    if (el.drive && !reduceMotion) o.position.x = -16 + ((time * 0.004) % 78);
     // cranes relocate between planned set-ups through a stage, and slew towards the work
     if (el.setups) {
       const list = el.setups[STAGES[cs].id] || el.setups[STAGES[el.s].id];
@@ -216,13 +216,13 @@ function applyClipping() {
 
 // ------------------------------------------------------------------ camera
 const VIEWS = {
-  iso: { pos: [-24, 30, -30], tgt: [15, 5, 14] },
-  street: { pos: [15, 15, -31], tgt: [15, 6.5, 8] },
-  plan: { pos: [15.1, 78, 18], tgt: [15, 0, 17.9] },
-  basement: { pos: [-14, 24, -12], tgt: [15, 1.5, 13] },
-  rear: { pos: [48, 26, 66], tgt: [15, 5, 22] },
-  pools: { pos: [38, 13, 52], tgt: [14, 3.9, 32] },
-  road: { pos: [-10, 13, -24], tgt: [14, 1.2, -5] },
+  iso: { pos: [-33, 47, -47], tgt: [22, 4, 12] },
+  street: { pos: [22.3, 17, -55], tgt: [22.3, 7.5, 6] },
+  plan: { pos: [22.4, 92, 12.6], tgt: [22.3, 0, 12.5] },
+  basement: { pos: [-24, 38, -28], tgt: [22, 1.5, 12] },
+  rear: { pos: [70, 44, 66], tgt: [22, 5, 14] },
+  pools: { pos: [36, 23, 45], tgt: [20, 4.4, 21] },
+  road: { pos: [-18, 16, -40], tgt: [18, 1.2, -8] },
 };
 const STAGE_VIEW = {
   est: 'iso', piles: 'iso', reroute: 'road', dig: 'basement', capping: 'basement', drain: 'basement',

@@ -25,7 +25,7 @@ sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 2, far: 80 });
 sun.shadow.bias = -0.0008;
 scene.add(sun, sun.target);
-const warm = new THREE.PointLight(0xffd9a0, 0, 30); warm.position.set(W / 2, 5, 11); scene.add(warm);
+const warm = new THREE.PointLight(0xffd9a0, 0, 30); warm.position.set(W / 2, 5, 9); scene.add(warm);
 
 const { root, items, nearWall, context, labels, shell } = buildHouse(stageIndex);
 scene.add(root);
@@ -45,7 +45,7 @@ items.forEach(o => {
   o.traverse(c => { if (c.isLineSegments) return; if (c.material) el.mats.push({ m: c.material, op: c.material.opacity, tr: c.material.transparent, em: c.material.emissive ? c.material.emissive.clone() : null }); });
 });
 // Exploded floors: L1 and L2 step up and across so every floor's interior can be seen at once
-const GAP = 0.9, SHIFT = 7.4;
+const GAP = 0.9, SHIFT = 8.8;
 const lvlOfY = y => (y >= 6.1 ? 2 : y >= 2.9 ? 1 : 0);
 items.forEach(o => { const el = o.userData.el; el.lvl = el.level ?? lvlOfY(el.bottom); });
 const stacked = [];
@@ -138,12 +138,12 @@ function applyClip() {
 
 // ------------------------------------------------------------------ camera
 const VIEWS = {
-  iso: { pos: [-13, 12, -5], tgt: [3, 3.6, 10], xpos: [2, 40, -17], xtgt: [10.4, 0.5, 10] },
-  side: { pos: [-19, 5.2, 11], tgt: [3, 4.6, 11] },
-  rear: { pos: [12, 9, 34], tgt: [3, 4, 14], xpos: [22, 22, 36], xtgt: [10.4, 2, 12] },
-  LG: { pos: [3, 22, 11.2], tgt: [3, 0, 11], level: 'LG' },
-  L1: { pos: [3, 25, 11.2], tgt: [3, 3.23, 11], level: 'L1' },
-  L2: { pos: [3, 28, 10.2], tgt: [3, 6.46, 10], level: 'L2' },
+  iso: { pos: [-15, 13.5, -6], tgt: [3.6, 3.6, 9], xpos: [3, 45, -19], xtgt: [12.5, 0.5, 9] },
+  side: { pos: [-21, 5.2, 9], tgt: [3.6, 4.6, 9] },
+  rear: { pos: [14, 9.5, 31], tgt: [3.6, 4, 12], xpos: [27, 25, 35], xtgt: [12.5, 2, 10] },
+  LG: { pos: [3.6, 31, 9.2], tgt: [3.6, 0, 9], level: 'LG' },
+  L1: { pos: [3.6, 34, 9.2], tgt: [3.6, 3.23, 9], level: 'L1' },
+  L2: { pos: [3.6, 35, 7.3], tgt: [3.6, 6.46, 7.1], level: 'L2' },
 };
 let tween = null, explodeTarget = 1, currentView = 'iso';
 function goView(name, instant) {
@@ -310,7 +310,6 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
 const bind = (id, key, after) => { const el = document.getElementById(id); el.checked = state[key]; el.addEventListener('change', () => { state[key] = el.checked; after && after(); }); };
 bind('tg-ghost', 'ghost'); bind('tg-hl', 'highlight'); bind('tg-cut', 'cutaway'); bind('tg-lbl', 'labels'); bind('tg-ctx', 'ctx'); bind('tg-cam', 'autoCam'); bind('tg-ceil', 'ceilings');
 bind('tg-explode', 'exploded', () => goView(currentView));
-$('#stairtype').addEventListener('change', e => { state.stairType = e.target.value; });
 window.addEventListener('keydown', e => {
   if (e.target.closest('input, select, textarea')) return;
   if (e.key === ' ') { e.preventDefault(); $('#play').click(); }
