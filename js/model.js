@@ -170,7 +170,7 @@ export function buildModel(stageIndex) {
   neighbour(15, 25, 36, 46, 5.2, null);
   neighbour(31, 43, 35, 46, 5.2, null);
   // reserve trees
-  for (const [x, z, k] of [[-18, -26, 1], [-8, -36, 2], [-30, -30, 5], [64, -27, 6], [70, -40, 7], [-26, -44, 8]]) { const t = MX.tree(1.5, k); t.position.set(x, D.GL, z); context.add(t); }
+  for (const [x, z, k] of [[-42, -28, 1], [-36, -46, 2], [64, -27, 6], [72, -42, 7], [54, -52, 8]]) { const t = MX.tree(1.5, k); t.position.set(x, D.GL, z); context.add(t); }
   // cars parked along the far side of Goldie St
   [[-20, 0x2c2f33], [-6, 0xe8e8e6], [9, 0x5a1f1f], [26, 0x8a9aa8, 'suv'], [41, 0x1f2f45], [58, 0xd0d2d4, 'suv']].forEach(([x, c, t]) => { const v = MX.car(c, t); v.position.set(x, D.GL - 0.04, ST.road + 1.2); context.add(v); });
   const lbl = makeFlatLabel('GOLDIE STREET', 1.6); lbl.position.set(22.3, D.GL - 0.02, -15.6); context.add(lbl);
@@ -746,7 +746,7 @@ export function buildModel(stageIndex) {
       box(a1, PY + 0.08, b1, c1, PY + 0.1, d1, EX.tile, { stage: 'extpool', seq: 2 + h * 0.01, anim: 'fade', house: h }, { roughness: 0.45 });
     // pool plant enclosure against the rear planter wall
     const plant = new THREE.Group();
-    { const enc = new THREE.Mesh(boxGeo(1.2, 1.0, 0.8), mat(EX.nuwall, { metalness: 0.4 })); enc.position.set(x0 + 1.0, PY + 0.6, QZ1 - 0.95);
+    { const enc = new THREE.Mesh(boxGeo(1.2, 1.0, 0.8), mat(EX.nuwall, { metalness: 0.15, roughness: 0.6 })); enc.position.set(x0 + 1.0, PY + 0.6, QZ1 - 0.95);
       const hp = new THREE.Mesh(boxGeo(0.9, 0.7, 0.35), mat(0xe4e6e8)); hp.position.set(x0 + 2.3, PY + 0.45, QZ1 - 0.8);
       const fan = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 18), mat(0x333333)); fan.rotation.x = Math.PI / 2; fan.position.set(x0 + 2.3, PY + 0.48, QZ1 - 0.99);
       plant.add(enc, hp, fan); }

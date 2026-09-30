@@ -332,6 +332,7 @@ new ResizeObserver(resize).observe(host); resize();
 let last = performance.now();
 const STAGE_SECONDS = 4;
 function frame(now) {
+  if (window.__hold) { requestAnimationFrame(frame); return; }   // video capture drives the frames itself
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (state.playing) { state.t = Math.min(N, state.t + dt * state.speed / STAGE_SECONDS); if (state.t >= N) { state.playing = false; syncPlay(); } updateReadout(); }
   else if (state.playTo != null) { state.t = Math.min(state.playTo, state.t + dt * Math.max(1, state.speed) / STAGE_SECONDS * 1.5); if (state.t >= state.playTo) state.playTo = null; updateReadout(); }
@@ -347,6 +348,7 @@ const m = location.hash.match(/^#h([1-5])(?:-(\w+))?$/);
 if (m) { state.house = +m[1] - 1; picker.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.h === state.house)); if (m[2]) { const i = FIT_STAGES.findIndex(s => s.id === m[2]); if (i >= 0) state.t = i + 0.999; } }
 renderRegister();
 goView(FIT_STAGES[Math.floor(Math.min(state.t, N - 1))].view, true);
+{ const vis = []; root.traverse(o => { vis.push([o, o.visible]); o.visible = true; }); renderer.compile(scene, camera); vis.forEach(([o, v]) => { o.visible = v; }); }
 updateReadout(); syncPlay();
 requestAnimationFrame(frame);
 // frame-exact hook used to record the sequence as a video
@@ -356,4 +358,6 @@ function setT(t) {
   if (i !== camStage) { camStage = i; if (state.autoCam) goView(FIT_STAGES[i].view, true); explodeAmt = explodeTarget; }
   state.playing = false; state.playTo = null; state.t = t; updateReadout();
 }
-window.__fo = { state, jumpTo, setHouse, goView, setT, N, cam: ([p, t]) => { tween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };
+window.__fo = { draw: () => { window.__hold = true; const now = performance.now();
+  controls.update(); update(now); world.tick(now);
+  renderer.render(scene, camera); }, state, jumpTo, setHouse, goView, setT, N, cam: ([p, t]) => { tween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };

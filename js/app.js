@@ -18,7 +18,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffe
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.localClippingEnabled = false;
+renderer.localClippingEnabled = true;
 host.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -47,7 +47,7 @@ realify(root);
 const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 62 });
 
 // Per-item animation setup
-const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.11, depthWrite: false });
+const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.07, depthWrite: false });
 const box3 = new THREE.Box3();
 items.forEach(o => {
   const el = o.userData.el;
@@ -194,7 +194,7 @@ function update(time) {
   const xr = state.xray && cs <= XRAY_LAST;
   if (groundX !== xr) {
     groundX = xr;
-    const set = c => { if (c.material) { c.material.transparent = xr; c.material.opacity = xr ? 0.3 : 1; c.material.depthWrite = !xr; } };
+    const set = c => { if (c.material) { c.material.transparent = xr; c.material.opacity = xr ? 0.5 : 1; c.material.depthWrite = !xr; } };
     ground.traverse(set);
     context.children.forEach(c => { if (c.userData.surface) set(c); });
   }
@@ -217,8 +217,12 @@ function applyClipping() {
   if (state.cutZ > 0) planes.push(new THREE.Plane(new THREE.Vector3(0, 0, 1), -state.cutZ));
   const lv = { all: null, l2: DIM.ROOF - 0.5, l1: DIM.L2 - 0.3, lg: DIM.L1 - 0.3, l0: DIM.LG - 0.3 }[state.cutLevel];
   if (lv != null) planes.push(new THREE.Plane(new THREE.Vector3(0, -1, 0), lv));
-  renderer.clippingPlanes = planes;
+  // clip only the building and the ground it sits in, never the sky, street context or suburb
+  if (!clipMats) { clipMats = new Set(); root.traverse(o => { if (o.material && !isContext(o)) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => clipMats.add(m)); }); }
+  for (const m of clipMats) { if ((m.clippingPlanes?.length || 0) !== planes.length) m.needsUpdate = true; m.clippingPlanes = planes.length ? planes : null; }
 }
+let clipMats = null;
+const isContext = o => { for (let p = o; p; p = p.parent) if (p === context || p === ground) return true; return false; };
 
 // ------------------------------------------------------------------ camera
 const VIEWS = {
@@ -422,6 +426,7 @@ resize();
 let last = performance.now();
 const STAGE_SECONDS = 5;
 function frame(now) {
+  if (window.__hold) { requestAnimationFrame(frame); return; }   // video capture drives the frames itself
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (state.playing) {
     state.t = Math.min(N, state.t + dt * state.speed / STAGE_SECONDS);
@@ -448,6 +453,8 @@ goView(STAGE_VIEW[STAGES[initial].id], true);
 applyClipping();
 updateReadout();
 syncPlay();
+// compile every material up front so no stage ever shows a half-drawn frame while shaders build
+{ const vis = []; root.traverse(o => { vis.push([o, o.visible]); o.visible = true; }); renderer.compile(scene, camera); vis.forEach(([o, v]) => { o.visible = v; }); }
 requestAnimationFrame(frame);
 // frame-exact hook used to record the sequence as a video
 let camStage = -1;
@@ -456,4 +463,9 @@ function setT(t) {
   if (i !== camStage) { camStage = i; if (state.autoCam) { goView(STAGE_VIEW[STAGES[i].id], true); stageCut(i); } }
   state.playing = false; state.playTo = null; state.t = t; updateReadout();
 }
-window.__gs = { state, goView, jumpTo, setT, N, cam: ([p, t]) => { camTween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };
+window.__gs = { draw: () => { window.__hold = true; const now = performance.now();
+  tickCamera(now);
+  controls.update();
+  update(now);
+  world.tick(now);
+  renderer.render(scene, camera); }, state, goView, jumpTo, setT, N, cam: ([p, t]) => { camTween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };

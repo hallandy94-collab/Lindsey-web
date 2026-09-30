@@ -346,6 +346,7 @@ new ResizeObserver(resize).observe(host); resize();
 
 let last = performance.now();
 function frame(now) {
+  if (window.__hold) { requestAnimationFrame(frame); return; }   // video capture drives the frames itself
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (state.mode === 'tour') {
     if (state.playing) { state.t += dt * state.speed; if (state.t >= T) { state.t = T - 0.001; state.playing = false; syncPlay(); } }
@@ -355,8 +356,12 @@ function frame(now) {
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+renderer.compile(scene, camera);
 document.body.dataset.mode = 'tour';
 syncPlay(); applyTour();
 requestAnimationFrame(frame);
 // frame-exact hook for video capture
-window.__wk = { T, shots: SHOTS, setT: t => { state.playing = false; state.mode = 'tour'; state.t = t; applyTour(); }, state, setMode, goPlace, walk };
+window.__wk = { draw: () => { window.__hold = true; const now = performance.now();
+  applyTour();
+  world.tick(now, camera);
+  renderer.render(scene, camera); }, T, shots: SHOTS, setT: t => { state.playing = false; state.mode = 'tour'; state.t = t; applyTour(); }, state, setMode, goPlace, walk };
