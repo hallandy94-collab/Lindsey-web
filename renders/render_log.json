@@ -3,5 +3,10 @@
   "seconds": 2968.216541290283,
   "samples": 160,
   "res": "1920x1080"
+ },
+ "street_oblique": {
+  "seconds": 4176.406167507172,
+  "samples": 160,
+  "res": "1920x1080"
  }
 }
