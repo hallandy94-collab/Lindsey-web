@@ -513,13 +513,16 @@ async function exportStage(t) {
   setT(t); window.__gs.draw();
   const off = [];
   scene.traverse(o => { if ((o.isSprite || (o.isMesh && o.material && o.material.isMeshBasicMaterial) || o.isLineSegments) && o.visible) { off.push(o); o.visible = false; } });
-  const buf = await new GLTFExporter().parseAsync([MIRROR, world.world], { binary: true, onlyVisible: true, maxTextureSize: 1024 });
-  off.forEach(o => { o.visible = true; });
+  // the sequencer's bookkeeping (userData.el, with its material references) must not go into the file
+  const ud = []; scene.traverse(o => { if (o.userData && Object.keys(o.userData).length) { ud.push([o, o.userData]); o.userData = {}; } });
+  let buf;
+  try { buf = await new GLTFExporter().parseAsync([MIRROR, world.world], { binary: true, onlyVisible: true, maxTextureSize: 1024 }); }
+  finally { ud.forEach(([o, u]) => { o.userData = u; }); off.forEach(o => { o.visible = true; }); }
   const bytes = new Uint8Array(buf); let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-window.__gs = { exportStage, draw: () => { window.__hold = true; const now = performance.now();
+window.__gs = { exportStage, parts: { MIRROR, world: world.world }, draw: () => { window.__hold = true; const now = performance.now();
   tickCamera(now);
   controls.update();
   update(now);

@@ -210,7 +210,18 @@ export function buildModel(stageIndex) {
     for (let k = 0; k < 13; k++) { const t = new THREE.Mesh(boxGeo(1.0, 0.04, 0.26), sm); t.position.set(-6.1 - k * 0.22, D.GL + 0.22 * (k + 1), ST.bay + 0.6); st.add(t); }
     add(st, { stage: 'est', seq: 2, rm: 'extfront', rmSeq: 7, temp: true }); }
   // wheel-wash at the north exit
-  box(RAMPS[0][0], D.GL, D.FB - 1.4, RAMPS[0][1], D.GL + 0.25, D.FB + 1.2, 0x6f7b85, { stage: 'est', seq: 2, rm: 'ramps', temp: true });
+  { // drive-through rumble-grid wheel wash: steel grid deck, yellow side kerbs, ramps each end, recycling tank
+    const ww = new THREE.Group(), x0 = RAMPS[0][0], x1 = RAMPS[0][1], z0 = D.FB - 1.4, z1 = D.FB + 1.2, y = D.GL;
+    const steelM = mat(0x4b5055, { roughness: 0.55, metalness: 0.8 }), yel = mat(0xe8b91c, { roughness: 0.45, metalness: 0.3 });
+    const deck = new THREE.Mesh(boxGeo(x1 - x0 - 0.3, 0.18, z1 - z0), steelM); deck.position.set((x0 + x1) / 2, y + 0.09, (z0 + z1) / 2); ww.add(deck);
+    for (let z = z0 + 0.1; z < z1; z += 0.16) { const bar = new THREE.Mesh(boxGeo(x1 - x0 - 0.4, 0.05, 0.05), steelM); bar.position.set((x0 + x1) / 2, y + 0.2, z); ww.add(bar); }
+    for (const x of [x0 + 0.08, x1 - 0.08]) { const k = new THREE.Mesh(boxGeo(0.16, 0.35, z1 - z0 + 0.6), yel); k.position.set(x, y + 0.17, (z0 + z1) / 2); ww.add(k); }
+    for (const [zz, s2] of [[z0 - 0.35, 1], [z1 + 0.35, -1]]) { const r = new THREE.Mesh(boxGeo(x1 - x0 - 0.3, 0.06, 0.8), steelM); r.position.set((x0 + x1) / 2, y + 0.09, zz); r.rotation.x = s2 * 0.22; ww.add(r); }
+    const tank = new THREE.Mesh(boxGeo(1.0, 1.1, 1.6), mat(0x2f5f9e, { roughness: 0.5 })); tank.position.set(x0 - 0.75, y + 0.55, (z0 + z1) / 2); ww.add(tank);
+    const water = new THREE.Mesh(boxGeo(x1 - x0 - 0.45, 0.02, z1 - z0 - 0.2), mat(0x6b6450, { roughness: 0.08, metalness: 0.2 })); water.position.set((x0 + x1) / 2, y + 0.16, (z0 + z1) / 2); ww.add(water);
+    ww.traverse(o => { o.castShadow = true; o.receiveShadow = true; });
+    add(ww, { stage: 'est', seq: 2, rm: 'ramps', temp: true });
+  }
   // silt fence along the frontage
   box(D.SX0, D.GL, D.FB + 0.3, D.SX1, D.GL + 0.6, D.FB + 0.4, 0x1d1f22, { stage: 'est', seq: 1, anim: 'rise', rm: 'dig', temp: true });
   // piling platform

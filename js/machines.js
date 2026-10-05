@@ -599,7 +599,7 @@ export function leafClump(n = 600, seed = 1, size = 0.15) {
     g.computeBoundingSphere(); return g;
   });
 }
-export const leafMaterial = () => new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, metalness: 0 });
+export const leafMaterial = () => { const m = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, metalness: 0 }); m.name = 'leaf'; return m; };
 
 // Pōhutukawa-style tree: short trunk splitting into spreading limbs, with a broad dome of leaf clumps.
 export function tree(scale = 1, seed = 1) {

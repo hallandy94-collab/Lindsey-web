@@ -111,6 +111,17 @@ SHOTS = {
                             exposure=3.0, emission=1.2, diffuse_bounces=6,
                             desc='House 2 L1 living and dining, looking west to the street glazing'),
 }
+# Construction stages, rendered from stage snapshots (index.html __gs.exportStage(t)), one GLB each.
+SHOTS.update({
+    'build_dig': dict(cam=(7.0, 11.0, -10.0), target=(-16.0, 1.2, 11.0), lens=28, sun='hero', vertical=False, exposure=0.35,
+                      desc='Bulk excavation (week 6): excavators loading tippers on the benches behind the secant wall'),
+    'build_pour': dict(cam=(-48.0, 16.0, -24.0), target=(-26.0, 1.5, 9.0), lens=28, sun='hero', vertical=False, exposure=0.35,
+                       desc='Basement slab pour: boom pump in the Goldie St bays, agitator discharging'),
+    'build_precast': dict(cam=(6.0, 7.0, -32.0), target=(-19.0, 7.0, 6.0), lens=28, sun='hero', vertical=True, exposure=0.35,
+                          desc='Precast wall panels going up with the 130 t crane in the drive-in bays'),
+    'build_scaffold': dict(cam=(6.0, 5.4, -26.0), target=(-20.0, 9.0, 2.0), lens=28, sun='hero', vertical=True, exposure=0.35,
+                           desc='Weathertight under scaffold: joinery going in, hoist and gantry on the frontage'),
+})
 SHOT_ORDER = ['street_hero', 'street_oblique', 'aerial', 'pool_court', 'rear_evening', 'interior_living']
 
 
@@ -387,6 +398,53 @@ def build_leaf(col, rough=0.6, name='leaf', big=False):
     return m
 
 
+def build_vcol_leaf():
+    """Leaf clumps carry their colour per vertex: glossy leaf with some translucency."""
+    m = new_mat('PBR_leafVC')
+    nt = NT(m)
+    vc = nt.n('ShaderNodeVertexColor')
+    p = nt.n('ShaderNodeBsdfPrincipled', in_Roughness=0.45, in_Specular_IOR_Level=0.45)
+    nt.link(vc.outputs['Color'], p.inputs['Base Color'])
+    tr = nt.n('ShaderNodeBsdfTranslucent')
+    nt.link(vc.outputs['Color'], tr.inputs['Color'])
+    mix = nt.n('ShaderNodeMixShader', in_Fac=0.25)
+    nt.link(p.outputs[0], mix.inputs[1])
+    nt.link(tr.outputs[0], mix.inputs[2])
+    out = nt.n('ShaderNodeOutputMaterial')
+    nt.link(mix.outputs[0], out.inputs['Surface'])
+    return m
+
+
+def apply_vertex_colors():
+    """Multiply each material's base colour by the mesh's vertex colours (the dig surface strata)."""
+    done = {}
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or not o.data.color_attributes:
+            continue
+        for slot in o.material_slots:
+            mat = slot.material
+            if mat is None or mat.name.startswith('PBR_leafVC'):
+                continue
+            if mat.name not in done:
+                vm = mat.copy(); vm.name = mat.name + '_vc'
+                p = principled_of(vm)
+                if p is not None:
+                    nt = vm.node_tree
+                    vc = nt.nodes.new('ShaderNodeVertexColor')
+                    mul = nt.nodes.new('ShaderNodeMix'); mul.data_type = 'RGBA'; mul.blend_type = 'MULTIPLY'
+                    mul.inputs[0].default_value = 1.0
+                    src = p.inputs['Base Color']
+                    if src.is_linked:
+                        nt.links.new(src.links[0].from_socket, mul.inputs[6])
+                    else:
+                        mul.inputs[6].default_value = src.default_value
+                    nt.links.new(vc.outputs['Color'], mul.inputs[7])
+                    nt.links.new(mul.outputs[2], src)
+                done[mat.name] = vm
+            slot.material = done[mat.name]
+    print('vertex colours applied to %d materials' % len(done))
+
+
 def build_palette(name, palette, rough, metal=0.0):
     """Per-object random colour from a palette (suburb instancing lost its instance colours on import)."""
     m = new_mat('PBR_' + name)
@@ -500,7 +558,12 @@ def upgrade_materials():
                     if key:
                         slot.material = suburb[key]
                         continue
-            if base == 'glass':
+            if base == 'leaf':
+                if 'leafVC' not in cache:
+                    cache['leafVC'] = build_vcol_leaf()
+                slot.material = cache['leafVC']
+                continue
+            if base in ('glass', 'glass-balustrade'):
                 slot.material = glass
                 continue
             if base == 'water':
@@ -956,6 +1019,7 @@ def main():
     import_glb(os.path.abspath(a.glb), not a.no_cache)
     sc = bpy.context.scene
     upgrade_materials()
+    apply_vertex_colors()
     grass = [] if a.no_grass else setup_grass()
     sky, sun = setup_world(sc)
     setup_render(sc, a.samples, res, a.preview)
