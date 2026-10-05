@@ -276,7 +276,7 @@ const VIEWS = {
   dig: { pos: [-9, 15, -11], tgt: [17, 1.4, 11] },
 };
 const STAGE_VIEW = {
-  est: 'iso', piles: 'iso', reroute: 'road', dig: 'dig', capping: 'dig', drain: 'basement',
+  est: 'iso', piles: 'iso', reroute: 'road', dig: 'dig', capping: 'basement', drain: 'basement',
   tank: 'basement', slab: 'basement', ducts: 'road', ramps: 'basement', undercroft: 'basement', pools: 'rear',
   lg: 'iso', w1: 'iso', l1: 'iso', w2: 'iso', l2: 'iso', xmas: 'iso', roof: 'iso', membrane: 'street',
   joinery: 'street', facade: 'street', doors: 'street', services: 'iso', fitout: 'iso', strike: 'street', extslab: 'rear', extpool: 'pools', extdeck: 'rear', extfront: 'street', soft: 'rear', pc: 'iso',
