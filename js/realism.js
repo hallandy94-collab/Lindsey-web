@@ -38,6 +38,7 @@ export const SURF = {
   gravel: { map: 'gravel', tile: 1.2, tint: 0xffffff, rough: 1, bump: 2.5 },
   sand: { map: 'gravel', tile: 0.6, tint: 0xe9d6a6, rough: 1, bump: 0.6 },
   soil: { map: 'soil', tile: 3, tint: 0xffffff, rough: 1, bump: 2 },
+  clay: { map: 'clay', tile: 2.2, tint: 0xffffff, rough: 0.95, bump: 3.5 },
   soilDeep: { map: 'soil', tile: 3, tint: 0xb8a48c, rough: 1, bump: 2 },
   mulch: { map: 'mulch', tile: 1.2, tint: 0xffffff, rough: 1, bump: 2 },
   grass: { map: 'grass', tile: 3.5, tint: 0xd8e6c8, rough: 1, bump: 1 },
@@ -186,7 +187,7 @@ export function sunDirection(date = new Date('2027-03-15T15:30:00+13:00')) {
   return new THREE.Vector3(Math.cos(alt) * Math.cos(az), Math.sin(alt), Math.cos(alt) * Math.sin(az)).normalize();
 }
 
-export function setupWorld({ renderer, scene, camera, sun, hemi, target = new THREE.Vector3(22, 0, 12), date, exposure = 0.95, suburb = true, shadowSize = 4096, shadowExtent = 60 }) {
+export function setupWorld({ renderer, scene, camera, sun, hemi, target = new THREE.Vector3(22, 0, 12), date, exposure = 0.95, suburb = true, shadowSize = 4096, shadowExtent = 60, groundHole = null }) {
   renderer.toneMapping = THREE.AgXToneMapping;
   renderer.toneMappingExposure = exposure;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -230,7 +231,7 @@ export function setupWorld({ renderer, scene, camera, sun, hemi, target = new TH
   scene.fog = new THREE.Fog(0xc9d6df, 260, 1500);
 
   const world = new THREE.Group(); world.name = 'world';
-  if (suburb) buildSuburb(world, target);
+  if (suburb) buildSuburb(world, target, groundHole);
   scene.add(world);
 
   // animated pool water
@@ -254,13 +255,23 @@ export function setupWorld({ renderer, scene, camera, sun, hemi, target = new TH
 // ------------------------------------------------------------------ surroundings
 // Suburban blocks, street trees, the sea to the north and Rangitoto on the horizon.
 // Everything is instanced so it costs a handful of draw calls.
-export function buildSuburb(world, c = new THREE.Vector3(22, 0, 12)) {
+export function buildSuburb(world, c = new THREE.Vector3(22, 0, 12), hole = null) {
   const GL = 3.75;
   const rand = mulberry(11);
   // wide ground to the horizon
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }));
+  // (with a hole where the model has its own ground, so the excavation is never covered)
+  let gg;
+  if (hole) {
+    const sh = new THREE.Shape(); sh.moveTo(-1200, -1200); sh.lineTo(1200, -1200); sh.lineTo(1200, 1200); sh.lineTo(-1200, 1200); sh.closePath();
+    const [x0, x1, z0, z1] = hole, h = new THREE.Path();
+    h.moveTo(x0 - c.x, c.z - z0); h.lineTo(x0 - c.x, c.z - z1); h.lineTo(x1 - c.x, c.z - z1); h.lineTo(x1 - c.x, c.z - z0); h.closePath();
+    sh.holes.push(h); gg = new THREE.ShapeGeometry(sh);
+  } else {
+    gg = new THREE.PlaneGeometry(2400, 2400);
+    const uv0 = gg.attributes.uv; for (let i = 0; i < uv0.count; i++) uv0.setXY(i, (uv0.getX(i) - 0.5) * 2400, (uv0.getY(i) - 0.5) * 2400);
+  }
+  const ground = new THREE.Mesh(gg, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }));
   ground.material.map = tex('grass', 6); ground.material.color.set(0xb9c9a4);
-  const g2 = ground.geometry; const uv = g2.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 2400, uv.getY(i) * 2400);
   ground.rotation.x = -Math.PI / 2; ground.position.set(c.x, GL - 0.12, c.z); ground.receiveShadow = true;
   world.add(ground);
   // sea: Hauraki Gulf to the north (+x)

@@ -292,22 +292,47 @@ export function excavator(color = PAINT.craneYellow) {
   for (const s of [-1, 1]) track(g, 4.4, 0.85, 0.6, s * 1.2, 0x1b1b1b);
   B(g, -1.8, 0.45, -0.9, 1.8, 0.85, 0.9, paint(0x2a2a2a, 0.6, 0.5));
   mesh(cy(0.85, 0.85, 0.25, 18), paint(0x2a2a2a, 0.5, 0.6), 0, 0.97, 0, g);
-  const up = new THREE.Group(); up.position.y = 1.1; g.add(up);
+  const up = new THREE.Group(); up.position.y = 1.1; g.add(up);               // slewing house
   const c = paint(color, 0.38, 0.35);
   B(up, -2.3, 0, -1.3, 1.0, 1.25, 1.3, c);
   B(up, -2.75, 0, -1.3, -2.25, 1.15, 1.3, paint(0x2b2b2b, 0.5, 0.4));          // counterweight
+  B(up, -2.0, 1.25, -1.1, -0.6, 1.32, 1.1, paint(0x26282b, 0.6, 0.4));         // engine hood grille
+  mesh(cy(0.06, 0.06, 0.7, 8), paint(0x1a1a1a, 0.5, 0.7), -1.6, 1.6, -0.8, up); // exhaust stack
   const ck = new THREE.Group(); ck.position.set(0.1, 0, 0.35); up.add(ck);     // cab (left front)
   B(ck, 0, 0, 0, 1.35, 2.0, 0.95, c); B(ck, 1.33, 0.6, 0.06, 1.37, 1.9, 0.89, glassM()); B(ck, 0.1, 0.8, 0.93, 1.25, 1.9, 0.97, glassM());
-  // boom (two-piece bend), stick and bucket, with rams
+  B(ck, 0.05, 2.0, 0.05, 1.3, 2.06, 0.9, paint(0x2a2a2a, 0.5, 0.5));
+  mesh(cy(0.07, 0.07, 0.1, 10), lamp(0xff8a1a), 0.6, 2.12, 0.5, ck);           // beacon
+  // boom (two-piece bend), stick and bucket, each on its own pin so the machine can dig
   const bm = paint(color, 0.38, 0.35);
-  const p0 = [0.9, 0.9, -0.25], p1 = [3.4, 3.4, -0.25], p2 = [5.2, 2.2, -0.25], p3 = [5.5, -0.2, -0.25];
-  member(up, p0, p1, 0.5, bm); member(up, p1, p2, 0.45, bm); member(up, p2, p3, 0.35, bm);
-  member(up, [0.9, 0.3, -0.25], [2.4, 2.4, -0.25], 0.14, chrome(), true);
-  member(up, [3.1, 3.8, -0.25], [5.0, 2.8, -0.25], 0.12, chrome(), true);
-  const bk = new THREE.Group(); bk.position.set(...p3); up.add(bk);
-  B(bk, -0.55, -0.6, -0.55, 0.35, 0.1, 0.55, paint(0x303234, 0.6, 0.6));
-  for (let k = -2; k <= 2; k++) B(bk, 0.3, -0.62, k * 0.2 - 0.04, 0.5, -0.55, k * 0.2 + 0.04, steel());
+  const P0 = [0.9, 0.9, -0.25];
+  const boom = new THREE.Group(); boom.position.set(...P0); up.add(boom);
+  const b1 = [2.5, 2.5, 0], b2 = [4.3, 1.3, 0];
+  member(boom, [0, 0, 0], b1, 0.5, bm); member(boom, b1, b2, 0.45, bm);
+  member(up, [0.9, 0.3, -0.25], [1.9, 1.7, -0.25], 0.2, paint(0x2b2b2b, 0.5, 0.5), true);   // boom ram barrel
+  member(boom, [0.35, 0.05, 0], [1.5, 1.5, 0], 0.13, chrome(), true);                        // boom ram rod
+  member(boom, [2.2, 2.9, 0], [4.1, 1.9, 0], 0.12, chrome(), true);                          // stick ram
+  const stick = new THREE.Group(); stick.position.set(...b2); boom.add(stick);
+  member(stick, [0, 0, 0], [0.3, -2.4, 0], 0.35, bm);
+  member(stick, [0.05, 0.3, 0], [0.32, -1.9, 0], 0.11, chrome(), true);                      // bucket ram
+  const bucket = new THREE.Group(); bucket.position.set(0.3, -2.4, 0); stick.add(bucket);
+  B(bucket, -0.55, -0.6, -0.55, 0.35, 0.1, 0.55, paint(0x303234, 0.6, 0.6));
+  for (let k = -2; k <= 2; k++) B(bucket, 0.3, -0.62, k * 0.2 - 0.04, 0.5, -0.55, k * 0.2 + 0.04, steel());
+  const load = B(bucket, -0.5, 0.05, -0.5, 0.3, 0.32, 0.5, paint(0x8a6a48, 1, 0)); load.visible = false;
+  g.userData.rig = { up, boom, stick, bucket, load };
   return g;
+}
+
+// One dig-and-load cycle, phase 0–1: crowd into the face, curl, lift, slew to the truck, dump, return.
+export function poseExcavator(ex, phase, slewToTruck = 1.7) {
+  const r = ex.userData.rig; if (!r) return;
+  const f = phase % 1, sm = x => x * x * (3 - 2 * x), seg = (a, b) => sm(Math.min(1, Math.max(0, (f - a) / (b - a))));
+  const dig = seg(0, 0.22), curl = seg(0.18, 0.32), lift = seg(0.3, 0.45), sl = seg(0.38, 0.6), dump = seg(0.6, 0.7), back = seg(0.72, 0.98);
+  const out = 1 - back;
+  r.up.rotation.y = slewToTruck * sl * out;
+  r.boom.rotation.z = (-0.42 + 0.3 * (1 - dig)) * (1 - lift) + 0.18 * lift * out + (-0.12) * back;
+  r.stick.rotation.z = (0.55 - 0.85 * dig) * (1 - lift) + (-0.1) * lift;
+  r.bucket.rotation.z = 0.2 - 1.25 * curl * (1 - dump) + 0.9 * dump * out;
+  r.load.visible = curl > 0.6 && dump < 0.4;
 }
 
 // ------------------------------------------------------------------ site furniture
@@ -320,6 +345,40 @@ export function siteCabin(w = 6, d = 2.4, h = 2.7, color = 0xeceae2) {
   for (let x = 0.8; x < w - 1.5; x += 1.8) B(g, x, 1.1, -0.02, x + 1.1, 2.0, 0.02, glassM());
   B(g, w - 1.3, 0.2, -0.03, w - 0.4, 2.2, 0.02, paint(0x7a8187, 0.4, 0.6));
   B(g, w - 1.5, 0, -0.6, w - 0.2, 0.18, -0.03, paint(0x6f757a, 0.5, 0.8));
+  return g;
+}
+// Temporary site fence: 2.4 × 1.8 m galvanised mesh panels on rubber feet, coupled with clips,
+// braced with stays, optionally clad in shade cloth (street frontage). Built along +x, 0 → len.
+export function tempFence(len, { cloth = false, h = 1.8 } = {}) {
+  const g = new THREE.Group();
+  const PW = 2.4, n = Math.max(1, Math.round(len / PW)), pw = len / n;
+  const galv = paint(0xb4b9bd, 0.45, 0.85);
+  const wire = new THREE.InstancedMesh(bx(1, 1, 1), galv, n * 40);
+  const tube = new THREE.InstancedMesh(cy(0.019, 0.019, 1, 8), galv, n * 4);
+  const feet = new THREE.InstancedMesh(bx(0.6, 0.14, 0.22), paint(0x1b1d1f, 0.9, 0), n + 1);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qz = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+  const P = new THREE.Vector3(), S = new THREE.Vector3();
+  let wi = 0, ti = 0;
+  for (let i = 0; i < n; i++) {
+    const x0 = i * pw + 0.03, x1 = (i + 1) * pw - 0.03;
+    // frame: two uprights and top and bottom rails
+    for (const x of [x0, x1]) { m4.compose(P.set(x, 0.12 + h / 2, 0), q, S.set(1, h, 1)); tube.setMatrixAt(ti++, m4); }
+    for (const y of [0.18, h + 0.06]) { m4.compose(P.set((x0 + x1) / 2, y, 0), qz, S.set(1, x1 - x0, 1)); tube.setMatrixAt(ti++, m4); }
+    // mesh: 4 mm wires at ~200 × 300
+    const nv = Math.round((x1 - x0) / 0.2);
+    for (let k = 1; k < nv; k++) { m4.compose(P.set(x0 + k * (x1 - x0) / nv, 0.12 + h / 2, 0), q, S.set(0.005, h - 0.1, 0.005)); wire.setMatrixAt(wi++, m4); }
+    for (let k = 1; k < 7; k++) { m4.compose(P.set((x0 + x1) / 2, 0.18 + k * (h - 0.12) / 7, 0), q, S.set(x1 - x0, 0.005, 0.005)); wire.setMatrixAt(wi++, m4); }
+  }
+  for (let i = 0; i <= n; i++) { m4.compose(P.set(i * pw, 0.07, 0), q, S.set(1, 1, 1)); feet.setMatrixAt(i, m4); }
+  wire.count = wi; tube.count = ti;
+  for (const o of [wire, tube, feet]) { o.castShadow = true; o.receiveShadow = true; o.userData.keepLook = true; g.add(o); }
+  // stays every third panel, on the inside
+  for (let i = 1; i < n; i += 3) member(g, [i * pw, 1.5, 0], [i * pw, 0.05, 1.1], 0.035, galv.clone(), true);
+  if (cloth) {
+    const cm = new THREE.MeshStandardMaterial({ color: 0x1f2e26, roughness: 0.95, transparent: true, opacity: 0.88, side: THREE.DoubleSide });
+    const c = mesh(new THREE.PlaneGeometry(len - 0.1, h - 0.15), cm, len / 2, 0.12 + h / 2 + 0.02, -0.03, g);
+    c.userData.keepLook = true;
+  }
   return g;
 }
 export function skipBin(color = PAINT.craneYellow, load = 0x7a6a58) {

@@ -3,6 +3,10 @@ import { OrbitControls } from '../vendor/OrbitControls.js';
 import { STAGES, PACKAGES, PROJECT } from './stages.js';
 import { buildModel, DIM } from './model.js';
 import { realify, setupWorld } from './realism.js';
+import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from '../vendor/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js';
 
 const N = STAGES.length;
 const stageIndex = id => {
@@ -38,13 +42,33 @@ Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, n
 sun.shadow.bias = -0.0006;
 scene.add(sun, sun.target);
 
-const { root, items, context, ground } = buildModel(stageIndex);
+const { root, items, context, ground, earth } = buildModel(stageIndex);
 // The model is set out like the drawings (x = grid 1 → 8, z = street → rear). Mirroring x gives
 // true handedness, so north, the sun and the ramps sit where they really are.
 const MIRROR = new THREE.Group(); MIRROR.scale.x = -1; MIRROR.add(root); scene.add(MIRROR);
 const toW = a => [-a[0], a[1], a[2]];
 realify(root);
-const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 62 });
+const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(-22.3, 0, 12), shadowExtent: 62,
+  groundHole: [-94.9, 49.9, -54.9, 74.9] });   // the model's own ground: x −50…95, z −55…75, mirrored
+
+// ------------------------------------------------------------------ post-processing
+// Multisampled HDR render → ground-truth ambient occlusion (contact shadows in corners, under
+// plant, at the toe of every batter) → AgX tone mapping and sRGB output.
+const rt = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
+const composer = new EffectComposer(renderer, rt);
+composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera, 16, 16);
+gtao.updateGtaoMaterial({ radius: 1.1, distanceExponent: 1.6, thickness: 1.2, scale: 1.15, samples: 16, distanceFallOff: 1 });
+gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+gtao.blendIntensity = 1;
+if (matchMedia('(max-width: 700px), (pointer: coarse)').matches) gtao.enabled = false;   // phones: keep it smooth
+composer.addPass(gtao);
+// labels are drawn over the scene, so keep them out of the occlusion depth (or they print as black boxes)
+const sprites = []; scene.traverse(o => { if (o.isSprite) sprites.push(o); });
+const gtaoRender = gtao.render.bind(gtao);
+gtao.render = (...a) => { const v = sprites.map(o => o.visible); sprites.forEach(o => { o.visible = false; }); gtaoRender(...a); sprites.forEach((o, i) => { o.visible = v[i]; }); };
+composer.addPass(new OutputPass());
+const render = () => composer.render();
 
 // Per-item animation setup
 const ghostMat = new THREE.LineBasicMaterial({ color: 0x33414f, transparent: true, opacity: 0.07, depthWrite: false });
@@ -91,11 +115,22 @@ function assignWindows(key, seqKey, d0Key, d1Key) {
 }
 assignWindows('s', 'seq', 'd0', 'd1');
 assignWindows('rs', 'rseq', 'rd0', 'rd1');
+items.forEach(o => {
+  const el = o.userData.el;
+  if (el.instantRm) { el.rd0 = 0; el.rd1 = 0.001; }
+  if (el.at) { el.d0 = el.at[0]; el.d1 = el.at[1]; }
+  // plant and people drive in or walk on: a quick fade, never a long ghostly one
+  if (el.temp && el.anim === 'fade') el.d1 = Math.min(el.d1, el.d0 + 0.08);
+  if (el.temp && el.ranim === 'fade' && el.rd1 != null) {
+    if (el.rseq >= 99) { el.rd0 = 0.9; el.rd1 = 0.97; }          // "at the end of the stage": stays for the work, then leaves
+    else el.rd1 = Math.min(el.rd1, el.rd0 + 0.08);
+  }
+});
 
 // ------------------------------------------------------------------ state
 const state = {
   t: 0, playing: false, speed: 1,
-  ghost: true, temp: true, ctx: true, highlight: true, autoCam: true, xray: true,
+  ghost: false, temp: true, ctx: true, highlight: false, autoCam: true, xray: false,
   explode: 0, explodeTarget: 0,
   cutZ: 0, cutLevel: 'all',
 };
@@ -188,6 +223,10 @@ function update(time) {
       o.userData.slewGroup.rotation.y = a + (reduceMotion ? 0 : Math.sin(time * 0.0004) * 0.35);
     }
   }
+  // the dig surface follows the programme, and the excavators work the faces
+  const pd = Math.min(1, t - DIG);
+  earth.setProgress(pd < 0 ? -1 : pd);
+  if (cs === DIG) earth.place(pd);
   context.visible = state.ctx;
   // see-through ground only while the work is in the ground (up to the ramps), so services
   // under the road and the piles show; the finished street stays solid after that
@@ -200,6 +239,7 @@ function update(time) {
   }
 }
 let groundX = null;
+const DIG = stageIndex('dig');
 const XRAY_LAST = stageIndex('ramps');
 
 // ------------------------------------------------------------------ clipping
@@ -233,9 +273,10 @@ const VIEWS = {
   rear: { pos: [70, 44, 66], tgt: [22, 5, 14] },
   pools: { pos: [36, 23, 45], tgt: [20, 4.4, 21] },
   road: { pos: [-18, 16, -40], tgt: [18, 1.2, -8] },
+  dig: { pos: [-9, 15, -11], tgt: [17, 1.4, 11] },
 };
 const STAGE_VIEW = {
-  est: 'iso', piles: 'iso', reroute: 'road', dig: 'basement', capping: 'basement', drain: 'basement',
+  est: 'iso', piles: 'iso', reroute: 'road', dig: 'dig', capping: 'dig', drain: 'basement',
   tank: 'basement', slab: 'basement', ducts: 'road', ramps: 'basement', undercroft: 'basement', pools: 'rear',
   lg: 'iso', w1: 'iso', l1: 'iso', w2: 'iso', l2: 'iso', xmas: 'iso', roof: 'iso', membrane: 'street',
   joinery: 'street', facade: 'street', doors: 'street', services: 'iso', fitout: 'iso', strike: 'street', extslab: 'rear', extpool: 'pools', extdeck: 'rear', extfront: 'street', soft: 'rear', pc: 'iso',
@@ -418,6 +459,7 @@ window.addEventListener('keydown', e => {
 function resize() {
   const w = host.clientWidth, h = host.clientHeight;
   renderer.setSize(w, h, false);
+  const pr = renderer.getPixelRatio(); composer.setPixelRatio(pr); composer.setSize(w, h);
   camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(host);
@@ -442,7 +484,7 @@ function frame(now) {
   controls.update();
   update(now);
   world.tick(now);
-  renderer.render(scene, camera);
+  render();
   requestAnimationFrame(frame);
 }
 
@@ -468,4 +510,4 @@ window.__gs = { draw: () => { window.__hold = true; const now = performance.now(
   controls.update();
   update(now);
   world.tick(now);
-  renderer.render(scene, camera); }, state, goView, jumpTo, setT, N, cam: ([p, t]) => { camTween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };
+  render(); }, state, goView, jumpTo, setT, N, earth, cam: ([p, t]) => { camTween = null; camera.position.set(...p); controls.target.set(...t); controls.update(); } };

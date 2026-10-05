@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { rectMinus, SLAB_HOLES, LIFT, LIFT_HOLE, FLIGHTS, FRONT_LG, PORCH } from './fitout-model.js';
 import * as MX from './machines.js';
+import { buildEarthworks } from './earthworks.js';
 import { poolFurniture } from './furniture.js';
 
 export const DIM = {
@@ -82,7 +83,7 @@ export function buildModel(stageIndex) {
     mesh.userData.el = {
       s: stageIndex(o.stage), seq: o.seq ?? 0, anim: o.anim || 'drop',
       rs: o.rm ? stageIndex(o.rm) : null, rseq: o.rmSeq ?? 0, ranim: o.rmAnim || 'fade',
-      temp: !!o.temp, soil: !!o.soil, house: o.house ?? null, layer: o.layer ?? null,
+      temp: !!o.temp, soil: !!o.soil, house: o.house ?? null, layer: o.layer ?? null, instantRm: false, at: o.at ?? null,
     };
     items.push(mesh);
     return mesh;
@@ -137,7 +138,7 @@ export function buildModel(stageIndex) {
   staticBox(ground, RAMPS[0][1], gb, D.FB, RAMPS[1][0], D.GL, 0, MAT.soil, soilM);
   staticBox(ground, RAMPS[1][1], gb, D.FB, X1, D.GL, 0, MAT.soil, soilM);
   for (const [a, b] of RAMPS) staticBox(ground, a, gb, D.FB, b, rampY(0) - 0.2, 0, MAT.soil, soilM);
-  staticBox(ground, 0, gb, 0, D.W, D.FORM, D.BD, MAT.soilDeep, soilM);             // below formation
+  staticBox(ground, 0, gb, 0, D.W, D.FORM - 0.06, D.BD, MAT.soilDeep, soilM);             // below formation
   // surface finishes: footpath, berm, drive-in bays, kerb, carriageway, reserve
   const surf = (x0, y0, z0, x1, y1, z1, c) => { staticBox(context, x0, y0, z0, x1, y1, z1, c).userData.surface = true; };
   surf(X0, D.GL - 0.02, ST.fp, X1, D.GL + 0.02, D.FB, MAT.path);
@@ -192,10 +193,13 @@ export function buildModel(stageIndex) {
 
   // ------------------------------------------------------------- 1 establishment
   const fenceH = 1.8;
-  const fenceRun = (x0, z0, x1, z1) => box(Math.min(x0, x1) - 0.03, D.GL, Math.min(z0, z1) - 0.03, Math.max(x0, x1) + 0.03, D.GL + fenceH, Math.max(z0, z1) + 0.03, MAT.fence,
-    { stage: 'est', seq: 0, anim: 'rise', rm: 'extfront', rmSeq: 0, temp: true }, { transparent: true, opacity: 0.4 });
+  const fenceRun = (x0, z0, x1, z1, cloth = false) => {
+    const len = Math.hypot(x1 - x0, z1 - z0), f = MX.tempFence(len, { cloth, h: fenceH });
+    f.position.set(x0, D.GL, z0); f.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+    return add(f, { stage: 'est', seq: 0, anim: 'rise', rm: 'extfront', rmSeq: 0, temp: true });
+  };
   // boundary hoarding with the north exit gate (grid 1–2) and the south entry gate (grid 7–8)
-  fenceRun(RAMPS[0][1] + 0.3, D.FB, RAMPS[1][0] - 0.3, D.FB);
+  fenceRun(RAMPS[0][1] + 0.3, D.FB, RAMPS[1][0] - 0.3, D.FB, true);   // shade cloth to the street
   fenceRun(D.SX0, D.FB, D.SX0, D.RB); fenceRun(D.SX1, D.FB, D.SX1, D.RB); fenceRun(D.SX0, D.RB, D.SX1, D.RB);
   // site office & amenities: two-storey cabins in the north end of the works zone
   for (const [x, y, sq] of [[-12.6, D.GL, 1], [-12.6, D.GL + 2.85, 2]]) {
@@ -210,7 +214,7 @@ export function buildModel(stageIndex) {
   // silt fence along the frontage
   box(D.SX0, D.GL, D.FB + 0.3, D.SX1, D.GL + 0.6, D.FB + 0.4, 0x1d1f22, { stage: 'est', seq: 1, anim: 'rise', rm: 'dig', temp: true });
   // piling platform
-  box(0, D.GL, 0, D.W, D.GL + 0.3, D.BD, MAT.gravel, { stage: 'est', seq: 3, anim: 'rise', rm: 'dig', rmSeq: 0, rmAnim: 'fade', temp: true, soil: true });
+  box(0, D.GL, 0, D.W, D.GL + 0.3, D.BD, MAT.gravel, { stage: 'est', seq: 3, anim: 'rise', rm: 'dig', rmSeq: 0, rmAnim: 'fade', temp: true, soil: true }).userData.el.instantRm = true;   // handed over to the dig surface
 
   // ------------------------------------------------------------- Goldie St works zone (TMP)
   // The drive-in bays along the frontage are taken as the construction works zone for
@@ -302,19 +306,8 @@ export function buildModel(stageIndex) {
   }
 
   // ------------------------------------------------------------- 4 bulk excavation
-  // soil plug inside the wall, removed in 3 lifts × 6 bays (ramp mouths first)
-  const lifts = [[D.GL - 0.8, D.GL], [D.GL - 1.6, D.GL - 0.8], [D.FORM, D.GL - 1.6]];
-  const NB = 6;
-  lifts.forEach(([y0, y1], li) => {
-    for (let b = 0; b < NB; b++) {
-      const x0 = 0.3 + b * (D.W - 0.6) / NB, x1 = 0.3 + (b + 1) * (D.W - 0.6) / NB;
-      const order = [0, 5, 1, 4, 2, 3].indexOf(b);
-      box(x0, y0, 0.3, x1, y1, D.BD - 0.3, MAT.soil, { stage: 'est', seq: -1, anim: 'none', rm: 'dig', rmSeq: li * NB + order, rmAnim: 'dig', soil: true }, { roughness: 1 });
-    }
-  });
-  const excavator = MX.excavator();
-  excavator.position.set(22, D.FORM, 13);
-  add(excavator, { stage: 'dig', seq: 0, anim: 'fade', rm: 'drain', rmSeq: 0, temp: true });
+  // the plug inside the wall is a continuously re-cut ground surface (earthworks.js)
+  const earth = buildEarthworks({ D, add });
   const truck = MX.tipTruck(0xf1f2f0); truck.position.set(8, D.GL - 0.04, LANE);
   add(truck, { stage: 'dig', seq: 0, anim: 'fade', rm: 'dig', rmSeq: 99, temp: true });
   truck.userData.el.drive = true;
@@ -571,35 +564,63 @@ export function buildModel(stageIndex) {
     if (x < HX(0) || x > HX(5)) return z < D.RAMP_Z1 ? rampY(z) : D.LG;
     return D.GL;
   };
+  // tube-and-fitting scaffold: 48 mm galvanised tubes as instanced meshes
+  const TUBE = new THREE.CylinderGeometry(0.024, 0.024, 1, 8);
+  const galvM = new THREE.MeshStandardMaterial({ color: 0xaeb3b6, roughness: 0.42, metalness: 0.85 });
+  galvM.userData.surf = 'galv';
+  const tubes = (g, segs, m = galvM, geo = TUBE) => {
+    const im = new THREE.InstancedMesh(geo, m, segs.length);
+    const m4 = new THREE.Matrix4(), up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion(), A = new THREE.Vector3(), Bv = new THREE.Vector3(), S = new THREE.Vector3();
+    segs.forEach(([a, b], i) => {
+      A.set(...a); Bv.set(...b); const len = A.distanceTo(Bv);
+      q.setFromUnitVectors(up, Bv.clone().sub(A).normalize());
+      m4.compose(A.clone().add(Bv).multiplyScalar(0.5), q, S.set(1, len, 1)); im.setMatrixAt(i, m4);
+    });
+    im.castShadow = true; im.receiveShadow = true; g.add(im); return im;
+  };
+  const plankM = new THREE.MeshStandardMaterial({ color: 0x9aa0a4, roughness: 0.5, metalness: 0.7 });
+  const toeM = new THREE.MeshStandardMaterial({ color: 0xe0b021, roughness: 0.6, metalness: 0.1 });
+  const soleM = new THREE.MeshStandardMaterial({ color: 0x8a6b45, roughness: 0.9 });
   const scaf = (x0, z0, x1, z1, out, seq) => {
     // out: [dx, dz] direction away from the building
     const g = new THREE.Group();
     const along = Math.abs(x1 - x0) > Math.abs(z1 - z0);
     const len = along ? Math.abs(x1 - x0) : Math.abs(z1 - z0);
-    const top = D.ROOF + 1.2;
+    const top = D.ROOF + 1.2, W = 1.1;
     const at = (s, off) => [along ? Math.min(x0, x1) + s + out[0] * off : x0 + out[0] * off, along ? z0 + out[1] * off : Math.min(z0, z1) + s + out[1] * off];
-    for (let s = 0; s <= len; s += 2.4) for (const off of [0, 1.1]) {
-      const [px, pz] = at(s, off), b0 = scafBase(px, pz);
-      const post = new THREE.Mesh(boxGeo(0.06, top - b0, 0.06), mat(MAT.scaffold, { metalness: 0.4 }));
-      post.position.set(px, (top + b0) / 2, pz); g.add(post);
-    }
+    const P = (s, off, y) => { const [x, z] = at(s, off); return [x, y, z]; };
+    const nb = Math.max(1, Math.round(len / 2.4)), bay = len / nb;
+    const segs = [], pads = [];
     const lo = Math.max(D.GL, scafBase(...at(0, 0)), scafBase(...at(len, 0))) + 2;
-    for (let y = lo; y <= top; y += 2) for (const off of [0, 1.1]) {
-      const [px, pz] = at(len / 2, off);
-      const led = new THREE.Mesh(boxGeo(along ? len : 0.05, 0.05, along ? 0.05 : len), mat(MAT.scaffold, { metalness: 0.4 }));
-      led.position.set(px, y, pz); g.add(led);
-      if (off === 1.1) {
-        const [dx2, dz2] = at(len / 2, 0.55);
-        const deck = new THREE.Mesh(boxGeo(along ? len : 1.1, 0.04, along ? 1.1 : len), mat(0x9b7b4f));
-        deck.position.set(dx2, y - 0.05, dz2); g.add(deck);
-      }
+    const lifts = []; for (let y = lo; y <= top + 0.01; y += 2) lifts.push(y);
+    for (let i = 0; i <= nb; i++) for (const off of [0, W]) {
+      const s0 = i * bay, b0 = scafBase(...at(s0, off));
+      segs.push([P(s0, off, b0 + 0.05), P(s0, off, top + 1.0)]);                 // standard
+      pads.push([...at(s0, off), b0]);
     }
-    const [nx, nz] = at(len / 2, 1.15);
-    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, top - lo + 2), mat(0xcfd6da, { transparent: true, opacity: 0.22, side: THREE.DoubleSide }));
-    net.position.set(nx, (top + lo - 2) / 2, nz);
+    for (const y of lifts) {
+      for (const off of [0, W]) segs.push([P(0, off, y), P(len, off, y)]);        // ledgers
+      for (let i = 0; i <= nb; i++) segs.push([P(i * bay, -0.1, y), P(i * bay, W + 0.1, y)]);   // transoms
+      segs.push([P(0, W, y + 1.0), P(len, W, y + 1.0)], [P(0, W, y + 0.5), P(len, W, y + 0.5)]); // guardrail + mid-rail
+    }
+    // face bracing on the outer line, zig-zag up the lifts every third bay
+    for (let i = 0; i < nb; i += 3) lifts.forEach((y, k) => { if (k < lifts.length - 1) segs.push(k % 2 ? [P(i * bay, W, y), P((i + 1) * bay, W, y + 2)] : [P((i + 1) * bay, W, y), P(i * bay, W, y + 2)]); });
+    tubes(g, segs);
+    // steel planks and toe boards on every lift, base plates on timber sole boards
+    for (const y of lifts) {
+      const [dx, dz] = at(len / 2, W / 2);
+      const deck = new THREE.Mesh(boxGeo(along ? len : W - 0.05, 0.05, along ? W - 0.05 : len), plankM); deck.position.set(dx, y + 0.05, dz); g.add(deck);
+      const [tx, tz] = at(len / 2, W - 0.02);
+      const toe = new THREE.Mesh(boxGeo(along ? len : 0.03, 0.15, along ? 0.03 : len), toeM); toe.position.set(tx, y + 0.15, tz); g.add(toe);
+    }
+    for (const [x, z, y] of pads) { const p = new THREE.Mesh(boxGeo(0.25, 0.05, 0.6), soleM); p.position.set(x, y + 0.025, z); if (along) p.rotation.y = Math.PI / 2; g.add(p); }
+    // debris netting on the outside face
+    const [nx, nz] = at(len / 2, W + 0.06);
+    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, top - lo + 2), mat(0xdfe6ea, { transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+    net.position.set(nx, (top + lo - 2) / 2 + 0.5, nz);
     if (!along) net.rotation.y = Math.PI / 2;
     g.add(net);
-    g.children.forEach(c => { c.castShadow = true; });
+    g.children.forEach(c => { c.castShadow = c !== net; c.receiveShadow = true; });
     add(g, { stage: 'membrane', seq, anim: 'rise', rm: 'strike', rmSeq: seq, temp: true });
   };
   scaf(BX0 - 0.4, -0.4, BX1 + 0.4, -0.4, [0, -1], 0);
@@ -609,7 +630,18 @@ export function buildModel(stageIndex) {
   // protected pedestrian gantry over the footpath
   box(-0.4, D.GL + 2.6, ST.fp, D.W + 0.4, D.GL + 2.8, D.FB + 0.2, 0x7b8a96, { stage: 'membrane', seq: 0, anim: 'fade', rm: 'strike', rmSeq: 3, temp: true });
   // goods hoist
-  box(21.7, D.GL, -2.2, 22.9, D.ROOF + 1.5, -1.2, 0xd5d9dc, { stage: 'membrane', seq: 1, anim: 'rise', rm: 'strike', rmSeq: 2, temp: true }, { transparent: true, opacity: 0.6 });
+  { // goods hoist: lattice mast tied to the scaffold, with the car at ground level
+    const hg = new THREE.Group(), segs = [], mx = 22.0, mz = -1.9, a = 0.45, hT = D.ROOF + 1.5;
+    for (const [dx, dz] of [[0, 0], [a, 0], [0, a], [a, a]]) segs.push([[mx + dx, D.GL, mz + dz], [mx + dx, hT, mz + dz]]);
+    for (let y = D.GL; y < hT - 0.5; y += 0.5) { segs.push([[mx, y, mz], [mx + a, y + 0.5, mz]], [[mx, y, mz + a], [mx + a, y + 0.5, mz + a]], [[mx, y, mz], [mx, y + 0.5, mz + a]], [[mx + a, y, mz], [mx + a, y + 0.5, mz + a]]); }
+    tubes(hg, segs, new THREE.MeshStandardMaterial({ color: 0xd8a31a, roughness: 0.5, metalness: 0.4 }));
+    const car = new THREE.Mesh(boxGeo(1.5, 2.0, 1.3), new THREE.MeshStandardMaterial({ color: 0xc9ced2, roughness: 0.45, metalness: 0.6 }));
+    car.position.set(mx + a + 0.8, D.GL + 1.1, mz + a / 2); hg.add(car);
+    const base = new THREE.Mesh(boxGeo(2.6, 0.2, 2.0), new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.8 }));
+    base.position.set(mx + a / 2 + 0.6, D.GL + 0.1, mz + a / 2); hg.add(base);
+    hg.traverse(o => { o.castShadow = true; o.receiveShadow = true; });
+    add(hg, { stage: 'membrane', seq: 1, anim: 'rise', rm: 'strike', rmSeq: 2, temp: true });
+  }
   // membrane roof + L2 roof terraces
   box(BX0 + 0.1, D.ROOF, 0.15, BX1 - 0.1, D.ROOF + 0.04, D.HD2 - 0.15, MAT.roofMem, { stage: 'membrane', seq: 4, anim: 'fade' }, { roughness: 0.6 });
   box(BX0 + 0.1, D.L2, D.HD2, BX1 - 0.1, D.L2 + 0.03, D.HD1, MAT.roofMem, { stage: 'membrane', seq: 5, anim: 'fade' }, { roughness: 0.6 });
@@ -872,7 +904,7 @@ export function buildModel(stageIndex) {
   crew('est', [[-3, GL, -3.5, 1], [2, GL, -1.8, 0, 1], [10, GL, 3, 2]]);
   crew('piles', [[6, GL + 0.3, 2.5, 0.5], [8, GL + 0.3, 1.8, 2, 2], [-2, GL, -6, 1]]);
   crew('reroute', [[5, GL, ST.fp - 0.4, 0, 2], [12, GL, ST.fp - 0.2, 1], [20, GL, ST.bay + 1.2, 3]]);
-  crew('dig', [[12, FORM, 8, 1], [30, FORM, 6, 2, 1]]);
+  crew('dig', [[2.2, GL, -1.4, Math.PI / 2], [42.4, GL, -1.4, -Math.PI / 2], [22, GL, -1.2, 0, 1]]);   // banksmen at the crossings, spotter on the wall
   crew('capping', [[1.4, FORM, 12, 0], [43, FORM, 16, 3, 2]]);
   crew('drain', [[10, FORM, 5, 0, 2], [20, FORM, 20, 1]]);
   crew('tank', [[8, TK, 6, 0, 2], [16, TK, 10, 1], [30, TK, 18, 2, 2], [38, TK, 8, 3]]);
@@ -910,7 +942,7 @@ export function buildModel(stageIndex) {
     return MX.mobileCrane({ axles: s >= 1 ? 5 : s >= 0.7 ? 3 : 2, reach, hookY, luff: s >= 1 ? 0.95 : 0.8 });
   }
 
-  return { root, items, context, ground };
+  return { root, items, context, ground, earth };
 }
 
 export function makeFlatLabel(text, size = 1.5) {
