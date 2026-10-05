@@ -28,5 +28,25 @@
   "seconds": 2014.3870594501495,
   "samples": 160,
   "res": "1920x1080"
+ },
+ "build_dig": {
+  "seconds": 922.6779916286469,
+  "samples": 128,
+  "res": "1920x1080"
+ },
+ "build_pour": {
+  "seconds": 765.2657406330109,
+  "samples": 128,
+  "res": "1920x1080"
+ },
+ "build_precast": {
+  "seconds": 520.1310396194458,
+  "samples": 128,
+  "res": "1920x1080"
+ },
+ "build_scaffold": {
+  "seconds": 770.5935819149017,
+  "samples": 128,
+  "res": "1920x1080"
  }
 }
