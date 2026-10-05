@@ -649,16 +649,22 @@ export function buildModel(stageIndex) {
   box(BX0 - 0.05, D.ROOF + 0.68, D.HD2 - 0.2, BX1 + 0.05, D.ROOF + 0.72, D.HD2 + 0.16, 0x8a9096, { stage: 'membrane', seq: 6 });
 
   // ------------------------------------------------------------- 21 joinery
-  const glassM = { transparent: true, opacity: 0.45, roughness: 0.1, metalness: 0.3 };
+  const glassM = { transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.3 };
+  // APL Architectural Series: 50 mm sightlines, 120 mm deep frames, IGU set back in the frame,
+  // a head transom over tall sliders, pressed sill flashing and pull handles on the sliding panels
+  const frameM = mat(0x2b2f33, { roughness: 0.38, metalness: 0.55 });
   const joinery = (h, y0, y1, z, seq, xs) => {
-    const x0 = xs ?? HX(h) + 0.5, x1 = HX(h + 1) - 0.5;
+    const x0 = xs ?? HX(h) + 0.5, x1 = HX(h + 1) - 0.5, out = z < 5 ? -1 : 1, W = x1 - x0, H = y1 - y0;
     const g = new THREE.Group();
-    const gl = new THREE.Mesh(boxGeo(x1 - x0, y1 - y0, 0.03), mat(MAT.glass, glassM)); gl.position.set((x0 + x1) / 2, (y0 + y1) / 2, z);
-    g.add(gl);
-    for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / 4) {
-      const mull = new THREE.Mesh(boxGeo(0.06, y1 - y0, 0.08), mat(0x2e3236)); mull.position.set(x, (y0 + y1) / 2, z); g.add(mull);
-    }
-    for (const y of [y0, y1]) { const tr = new THREE.Mesh(boxGeo(x1 - x0, 0.06, 0.08), mat(0x2e3236)); tr.position.set((x0 + x1) / 2, y, z); g.add(tr); }
+    const fr = (cx, cy, w, hh, d = 0.12, dz = 0) => { const m = new THREE.Mesh(boxGeo(w, hh, d), frameM); m.position.set(cx, cy, z + dz); g.add(m); };
+    const gl = new THREE.Mesh(boxGeo(W, H, 0.024), mat(MAT.glass, glassM)); gl.position.set((x0 + x1) / 2, (y0 + y1) / 2, z - out * 0.02); g.add(gl);
+    const nb = 4, bw = W / nb, tr = H > 2.6 ? y1 - 0.42 : null;
+    for (let i = 0; i <= nb; i++) fr(x0 + i * bw, (y0 + y1) / 2, i % nb ? 0.05 : 0.06, H);
+    for (const y of [y0 + 0.03, y1 - 0.03]) fr((x0 + x1) / 2, y, W, 0.06);
+    if (tr) fr((x0 + x1) / 2, tr, W, 0.05);
+    // sill flashing projecting past the face, and slider pull handles
+    const sill = new THREE.Mesh(boxGeo(W + 0.1, 0.03, 0.16), frameM); sill.position.set((x0 + x1) / 2, y0 - 0.005, z + out * 0.07); g.add(sill);
+    for (let i = 1; i < nb; i += 2) fr(x0 + i * bw + 0.08, y0 + 1.05, 0.025, 0.35, 0.03, out * 0.075);
     add(g, { stage: 'joinery', seq, anim: 'fade', house: h });
   };
   for (let h = 0; h < 5; h++) {
@@ -699,6 +705,19 @@ export function buildModel(stageIndex) {
     box(HX(h) + 0.6, y, -1.85, HX(h + 1) - 0.6, y + 1.05, -1.78, MAT.balustrade, { stage: 'doors', seq: 1 + h, house: h, anim: 'rise' }, { transparent: true, opacity: 0.4 });
   // L2 roof terrace balustrades
   for (let h = 0; h < 5; h++) box(HX(h) + 0.1, D.L2, D.HD1 - 0.08, HX(h + 1) - 0.1, D.L2 + 1.05, D.HD1 - 0.02, MAT.balustrade, { stage: 'doors', seq: 6 + h, house: h, anim: 'rise' }, { transparent: true, opacity: 0.4 });
+  // stainless spigots under the frameless balustrades, every ~1.1 m
+  for (let h = 0; h < 5; h++) {
+    const sp = new THREE.Group(), ss = mat(0xc9ced1, { roughness: 0.18, metalness: 1 });
+    const runs = [[HX(h) + 0.6, HX(h + 1) - 0.6, D.L1, -1.815], [HX(h) + 0.6, HX(h + 1) - 0.6, D.L2, -1.815], [HX(h) + 0.1, HX(h + 1) - 0.1, D.L2, D.HD1 - 0.05]];
+    for (const [a, b, y, z] of runs) { const n = Math.max(2, Math.round((b - a) / 1.1)); for (let i = 0; i <= n; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 0.16, 12), ss); c.position.set(a + 0.15 + i * (b - a - 0.3) / n, y + 0.08, z); sp.add(c); } }
+    add(sp, { stage: 'doors', seq: 1 + h, house: h, anim: 'fade' });
+  }
+  // charcoal downpipes on the rear party-wall lines, roof to podium
+  for (let h = 0; h <= 5; h++) {
+    const x = HX(h) + (h === 0 ? 0.25 : h === 5 ? -0.25 : 0);
+    cyl(x, D.L2, D.HD2 + 0.16, 0.045, D.ROOF + 0.4 - D.L2, 0x3a3f44, { stage: 'facade', seq: 21, anim: 'rise' }, 10);
+    cyl(x, D.LG, D.HD1 + 0.14, 0.045, D.L2 + 0.05 - D.LG, 0x3a3f44, { stage: 'facade', seq: 21, anim: 'rise' }, 10);
+  }
 
   // ------------------------------------------------------------- 24 services & lifts (house flow-line)
   for (let h = 0; h < 5; h++) {

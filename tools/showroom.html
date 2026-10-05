@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-NZ"><head><meta charset="utf-8"><title>Plant showroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0;height:100%;background:#cfd8de}canvas{display:block;width:100%;height:100%}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three.module.min.js" } }</script>
+</head><body>
+<script type="module">
+// Inspection page for the plant models: every machine on a hardstand, same sky, sun and AO as the viewers.
+import * as THREE from 'three';
+import * as MX from '../js/machines.js';
+import { realify, setupWorld } from '../js/realism.js';
+import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from '../vendor/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js';
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 2000);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x888888, 1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 3); sun.castShadow = true; scene.add(sun, sun.target);
+const world = setupWorld({ renderer, scene, camera, sun, hemi, target: new THREE.Vector3(30, 0, 0), suburb: false, shadowExtent: 45 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x6b6e72, roughness: 0.9 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; ground.userData.surf = 'concrete'; scene.add(ground);
+const items = {
+  tipper: MX.tipTruck(0xf1f2f0), agitator: MX.agitator(), pump: MX.boomPump(20), hpmv: MX.hpmv('planks'),
+  crane: MX.mobileCrane({ axles: 5, reach: 22, hookY: 6, ring: false }), rig: MX.pilingRig(), excavator: MX.excavator(),
+  delivery: MX.deliveryTruck(), workers: new THREE.Group(), tree: MX.tree(1.2, 3), car: MX.car(0x5a6b7a, 'suv'),
+};
+[0, 1, 2].forEach(p => { const w = MX.worker(p === 2 ? 0xff7a1a : 0xf6d31c, 0xf5f5f2, p); w.position.z = p * 0.8; items.workers.add(w); });
+MX.poseExcavator(items.excavator, 0.1, 1.5);
+let x = 0; const at = {};
+for (const [k, o] of Object.entries(items)) { o.position.set(x, 0, 0); scene.add(o); at[k] = x; x += k === 'hpmv' ? 26 : k === 'crane' ? 22 : 14; }
+scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+realify(scene);
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
+composer.addPass(new RenderPass(scene, camera));
+const ao = new GTAOPass(scene, camera, innerWidth, innerHeight); ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.6, thickness: 1, scale: 1.1, samples: 16 }); composer.addPass(ao);
+composer.addPass(new OutputPass());
+window.__show = (k, dist = 11, h = 3.5, az = 0.75, ty = 1.6) => {
+  const cx = at[k]; camera.position.set(cx + Math.cos(az) * dist, h, Math.sin(az) * dist); camera.lookAt(cx, ty, 0);
+  sun.target.position.set(cx, 0, 0); sun.position.set(cx - 25, 40, 30); sun.target.updateMatrixWorld();
+  composer.render();
+};
+window.__ready = true;
+</script></body></html>

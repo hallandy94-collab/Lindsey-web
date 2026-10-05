@@ -7,6 +7,7 @@ import { EffectComposer } from '../vendor/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from '../vendor/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from '../vendor/jsm/postprocessing/OutputPass.js';
+import { GLTFExporter } from '../vendor/GLTFExporter.js';
 
 const N = STAGES.length;
 const stageIndex = id => {
@@ -505,7 +506,20 @@ function setT(t) {
   if (i !== camStage) { camStage = i; if (state.autoCam) { goView(STAGE_VIEW[STAGES[i].id], true); stageCut(i); } }
   state.playing = false; state.playTo = null; state.t = t; updateReadout();
 }
-window.__gs = { draw: () => { window.__hold = true; const now = performance.now();
+// Snapshot of the scene at programme time t as binary glTF (base64), for the ray-traced stills:
+// exactly what the viewer shows (dig surface, plant poses, cranes, scaffold), without labels,
+// overlays or the sky dome. Only visible objects are written.
+async function exportStage(t) {
+  setT(t); window.__gs.draw();
+  const off = [];
+  scene.traverse(o => { if ((o.isSprite || (o.isMesh && o.material && o.material.isMeshBasicMaterial) || o.isLineSegments) && o.visible) { off.push(o); o.visible = false; } });
+  const buf = await new GLTFExporter().parseAsync([MIRROR, world.world], { binary: true, onlyVisible: true, maxTextureSize: 1024 });
+  off.forEach(o => { o.visible = true; });
+  const bytes = new Uint8Array(buf); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+window.__gs = { exportStage, draw: () => { window.__hold = true; const now = performance.now();
   tickCamera(now);
   controls.update();
   update(now);

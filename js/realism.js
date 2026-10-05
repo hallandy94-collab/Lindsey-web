@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import { Sky } from '../vendor/Sky.js';
+import { leafClump, leafMaterial } from './machines.js';
 
 // ------------------------------------------------------------------ textures
 // Share builds inline the images as data URIs in window.__GS_TEX.
@@ -124,12 +125,14 @@ function applySurf(m, name) {
 }
 
 // Physically based glass and water, keeping the opacity the sequencer animates.
+// Architectural Low-E IGUs read dark and mirror-like, picking up the sky; frameless low-iron
+// balustrade glass stays clear with a faint green edge.
 function makeGlass(m) {
-  m.name = 'glass';
-  m.color.set(0xb9d3dc);
-  m.roughness = 0.04; m.metalness = 0.0;
-  m.envMapIntensity = 1.6;
-  m.opacity = Math.min(m.opacity, 0.32);
+  const balustrade = m.color.getHex() === 0xbfe3ee;
+  m.name = balustrade ? 'glass-balustrade' : 'glass';
+  if (balustrade) { m.color.set(0xd2e6e6); m.opacity = Math.min(m.opacity, 0.22); m.metalness = 0.15; m.envMapIntensity = 1.6; }
+  else { m.color.set(0x5d7279); m.opacity = Math.max(0.5, Math.min(m.opacity, 0.58)); m.metalness = 0.38; m.envMapIntensity = 2.4; }
+  m.roughness = 0.02;
   m.transparent = true; m.depthWrite = false;
   m.needsUpdate = true;
 }
@@ -332,15 +335,13 @@ export function buildSuburb(world, c = new THREE.Vector3(22, 0, 12), hole = null
 
 export function addTrees(parent, list, GL = 3.75) {
   const trunkG = new THREE.CylinderGeometry(0.18, 0.28, 3, 6); trunkG.translate(0, 1.5, 0);
-  const canG = new THREE.IcosahedronGeometry(1, 1);
-  const pos = canG.attributes.position; const r = mulberry(5);
-  for (let i = 0; i < pos.count; i++) { const k = 0.82 + r() * 0.3; pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.8, pos.getZ(i) * k); }
-  canG.computeVertexNormals();
+  // leafy canopies: the same real-leaf clumps as the site trees, lighter for the distance
+  const canG = leafClump(280, 9, 0.2);
   const n = list.length;
   const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshStandardMaterial({ color: 0x5b4636, roughness: 1 }), n);
-  const cans = new THREE.InstancedMesh(canG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true }), n * 3);
+  const cans = new THREE.InstancedMesh(canG, leafMaterial(), n * 3);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
-  const GREENS = [0x3f5f2e, 0x4c6b34, 0x355a33, 0x5a7440, 0x42613a, 0x2f4d2b];
+  const GREENS = [0xffffff, 0xeef5e6, 0xe2ebd8, 0xfff6e6, 0xf2f7ea, 0xd9e2cf];   // tints over the leaf colours
   list.forEach(([x, z, s, rr], i) => {
     const y = (Array.isArray(GL) ? GL[i] : GL);
     m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(s, s, s)); trunks.setMatrixAt(i, m4);
