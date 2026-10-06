@@ -46,6 +46,22 @@ export function buildCompleted({ suburb = true, interiors = true } = {}) {
   const dead = [];
   scene.traverse(o => { if (!o.visible) dead.push(o); });
   dead.forEach(o => o.parent && o.parent.remove(o));
+  // one material per distinct look, named so a renderer's library swap is quick; no sequencer data
+  const lib = new Map();
+  scene.traverse(k => {
+    k.userData = {};
+    if (!k.isMesh) return;
+    const one = m => {
+      const key = [m.type, m.name, m.color && m.color.getHexString(), (m.roughness ?? 0).toFixed(2), (m.metalness ?? 0).toFixed(2), m.opacity.toFixed(2), m.transparent, m.map && m.map.uuid, m.vertexColors, m.emissive && m.emissive.getHexString()].join('|');
+      if (!lib.has(key)) {
+        const c = m.clone();
+        if (!c.name) c.name = (m.transparent && m.opacity < 0.9 ? 'glass_' : m.metalness > 0.6 ? 'metal_' : 'paint_') + (m.color ? m.color.getHexString() : 'x');
+        lib.set(key, c);
+      }
+      return lib.get(key);
+    };
+    k.material = Array.isArray(k.material) ? k.material.map(one) : one(k.material);
+  });
   scene.updateMatrixWorld(true);
   return scene;
 }

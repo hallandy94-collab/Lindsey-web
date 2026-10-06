@@ -522,7 +522,66 @@ async function exportStage(t) {
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-window.__gs = { exportStage, parts: { MIRROR, world: world.world }, draw: () => { window.__hold = true; const now = performance.now();
+// The whole project as one glTF for Twinmotion / Lumion / D5 phasing: every element in its
+// finished position, grouped under one node per programme stage ("S04 Bulk excavation …"),
+// temporary works and plant flagged in their names with the stage they leave at. The ground is
+// given twice: existing ground (S01, remove at S04) and the dug formation (S04).
+async function exportPhased({ plant = true } = {}) {
+  setT(N); window.__gs.draw();
+  const ud = []; scene.traverse(o => { if (o.userData && Object.keys(o.userData).length) { ud.push([o, o.userData]); o.userData = {}; } });
+  const elOf = new Map(ud.map(([o, u]) => [o, u.el]));
+  const out = new THREE.Scene();
+  const pad = i => String(i + 1).padStart(2, '0');
+  const groups = STAGES.map((s, i) => { const g = new THREE.Group(); g.name = `S${pad(i)} ${s.title}`; out.add(g); return g; });
+  const site = new THREE.Group(); site.name = 'S00 Existing site, street and neighbours'; out.add(site);
+  const keep = o => !(o.isSprite || o.isLineSegments || (o.isMesh && o.material && o.material.isMeshBasicMaterial));
+  const cloneAt = (o, parent, name) => {
+    o.updateMatrixWorld(true);
+    const c = o.clone(true); c.matrixAutoUpdate = false; c.matrix.copy(o.matrixWorld); c.matrix.decompose(c.position, c.quaternion, c.scale); c.matrixAutoUpdate = true;
+    c.traverse(k => { k.visible = true; }); const dead = []; c.traverse(k => { if (k !== c && !keep(k)) dead.push(k); }); dead.forEach(k => k.parent && k.parent.remove(k));
+    if (name) c.name = name; parent.add(c); return c;
+  };
+  try {
+    for (const o of items) {
+      const el = elOf.get(o); if (!el || !keep(o)) continue;
+      if (el.temp && !plant) continue;
+      // finished position and scale, whatever the sequencer was doing
+      o.position.copy(el.base.pos); o.scale.copy(el.base.scale);
+      for (const r of el.mats) { r.m.opacity = r.op; r.m.transparent = r.tr; r.m.visible = true; if (r.em && r.m.emissive) r.m.emissive.copy(r.em); }
+      const leaves = el.rs != null ? ` (remove at S${pad(el.rs)})` : '';
+      const nm = (o.name || (el.temp ? 'Temporary works' : 'Element')) + leaves;
+      if (o === earth.mesh) {
+        earth.setProgress(-1); const pre = cloneAt(o, groups[0], 'Existing ground (remove at S04)'); pre.geometry = o.geometry.clone();
+        earth.setProgress(1); const dug = cloneAt(o, groups[STAGES.findIndex(s => s.id === 'dig')], 'Bulk excavation – formation'); dug.geometry = o.geometry.clone();
+        continue;
+      }
+      cloneAt(o, groups[el.s], nm);
+    }
+    for (const c of root.children) if (!elOf.has(c) || !elOf.get(c)) if (keep(c) && c.visible !== false && !items.includes(c)) cloneAt(c, site);
+    const w = new THREE.Group(); w.name = 'S00 Suburb, sea and Rangitoto'; out.add(w); cloneAt(world.world, w);
+    // one material per distinct look, named so a renderer's library swap is quick
+    const lib = new Map();
+    out.traverse(k => {
+      if (!k.isMesh) return;
+      const one = m => {
+        const key = [m.type, m.name, m.color && m.color.getHexString(), (m.roughness ?? 0).toFixed(2), (m.metalness ?? 0).toFixed(2), m.opacity.toFixed(2), m.transparent, m.map && m.map.uuid, m.vertexColors, m.emissive && m.emissive.getHexString()].join('|');
+        if (!lib.has(key)) {
+          const c = m.clone();
+          if (!c.name) c.name = (m.transparent && m.opacity < 0.9 ? 'glass_' : m.metalness > 0.6 ? 'metal_' : 'paint_') + (m.color ? m.color.getHexString() : 'x');
+          lib.set(key, c);
+        }
+        return lib.get(key);
+      };
+      k.material = Array.isArray(k.material) ? k.material.map(one) : one(k.material);
+    });
+    out.updateMatrixWorld(true);
+    const buf = await new GLTFExporter().parseAsync(out, { binary: true, maxTextureSize: 2048 });
+    const bytes = new Uint8Array(buf); let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  } finally { ud.forEach(([o, u]) => { o.userData = u; }); setT(N); }
+}
+window.__gs = { exportStage, exportPhased, parts: { MIRROR, world: world.world }, draw: () => { window.__hold = true; const now = performance.now();
   tickCamera(now);
   controls.update();
   update(now);
